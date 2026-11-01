@@ -66,7 +66,15 @@ _decky_plugins() {
 # config_USER.json, CSS Loader profiles, STORE prefs and sounds/config.json
 # from the profile into ~/homebrew. Theme and pack folders are fetched next.
 _decky_settings() {
-  local n; n="$(python3 "$PROFILE_PY" materialize "$PROFILE" "$HOME/homebrew")" || return 1
+  # The loader (root) owns settings/loader.json and other files it has
+  # written, so build the tree in a staging dir and copy it in with sudo.
+  local stage n; stage="$(mktemp -d)"
+  mkdir -p "$stage/settings"
+  [[ -f "$HOME/homebrew/settings/loader.json" ]] && cp "$HOME/homebrew/settings/loader.json" "$stage/settings/" 2>/dev/null
+  n="$(python3 "$PROFILE_PY" materialize "$PROFILE" "$stage")" || { rm -rf "$stage"; return 1; }
+  sudo rsync -a "$stage/" "$HOME/homebrew/" || { rm -rf "$stage"; return 1; }
+  sudo chown -R "$USER:$USER" "$HOME/homebrew/settings" "$HOME/homebrew/themes" "$HOME/homebrew/sounds" 2>/dev/null || true
+  rm -rf "$stage"
   info "wrote $n settings/state files from the profile"
 }
 

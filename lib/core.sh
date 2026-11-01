@@ -3,7 +3,7 @@
 # Sourced by the deckstrap entrypoint; DECKSTRAP_DIR is set by it.
 
 # shellcheck disable=SC2034  # used by the entrypoint and build.sh
-DECKSTRAP_VERSION="0.1.0"
+DECKSTRAP_VERSION="0.1.1"
 PROFILE_PY="$DECKSTRAP_DIR/lib/profile.py"
 USER="${USER:-$(id -un)}"
 export USER
@@ -143,12 +143,20 @@ decky_plugin_install() {   # decky_plugin_install <store-name> <plugins-dir>; pr
      && unzip_py "$tmp/p.zip" "$tmp/x" \
      && folder="$(basename "$(find "$tmp/x" -mindepth 1 -maxdepth 1 -type d | head -n1)")" \
      && [[ -n "$folder" && -f "$tmp/x/$folder/plugin.json" ]]; then
-    sudo rm -rf "${pdir:?}/$folder"
-    mv "$tmp/x/$folder" "$pdir/$folder"
-    chmod -R u+rwX,go+rX "$pdir/$folder"
+    # Decky's loader (root) locks ~/homebrew/plugins to mode 555 as soon as it
+    # starts, so placing a plugin needs sudo; afterwards match the loader's
+    # own ownership and permissions.
+    if sudo rm -rf "${pdir:?}/$folder" \
+       && sudo mv "$tmp/x/$folder" "$pdir/$folder" \
+       && sudo chown -R "$USER:$USER" "$pdir/$folder" \
+       && sudo chmod -R 555 "$pdir/$folder"; then
+      rm -rf "$tmp"
+      echo "$folder"
+      return 0
+    fi
     rm -rf "$tmp"
-    echo "$folder"
-    return 0
+    err "could not place '$name' into $pdir"
+    return 1
   fi
   rm -rf "$tmp"
   err "failed to download/verify '$name'"

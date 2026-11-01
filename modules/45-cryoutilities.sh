@@ -10,11 +10,14 @@ _cryo_install() {
   local bin="$HOME/.cryo_utilities/cryo_utilities"
   if [[ ! -x "$bin" ]]; then
     info "installing CryoUtilities..."
-    curl -fsSL https://raw.githubusercontent.com/CryoByte33/steam-deck-utilities/main/install.sh | bash -s -- || return 1
+    # their install.sh uses paths relative to the current directory; run it from $HOME
+    (cd "$HOME" && curl -fsSL https://raw.githubusercontent.com/CryoByte33/steam-deck-utilities/main/install.sh | bash -s --) || return 1
   fi
   [[ -x "$bin" ]] || { err "CryoUtilities binary not found at $bin"; return 1; }
   if pbool cryoutilities.recommended true; then
     info "applying recommended settings (swap, swappiness, HugePages...)"
-    sudo "$bin" recommended || return 1
+    # CryoUtilities keeps its log under $HOME; sudo would reset HOME to /root
+    mkdir -p "$HOME/.cryo_utilities"
+    sudo --preserve-env=HOME "$bin" recommended || return 1
   fi
 }

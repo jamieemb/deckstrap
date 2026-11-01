@@ -100,9 +100,14 @@ order.
 ## Development
 
 ```
-bash tests/run.sh      # syntax, shellcheck, profile tool, dry-run apply, bundle build
-./build.sh             # dist/deckstrap.sh from profile.example.json with the module picker
+bash tests/run.sh      # syntax, shellcheck, profile tool, backend API, dry-run apply, bundle build
+./build.sh             # dist/deckstrap.sh from profile.example.json, GUI mode
+python3 lib/server.py --profile profile.example.json --insecure-no-sudo   # UI development: open the printed URL with &dry=1
 ```
+
+**Test VM:** `vm/` has scripts that build a real SteamOS virtual machine
+from Valve's recovery image (QEMU; Windows with WHPX or Linux with KVM),
+with snapshots for a repeatable clean install. See [vm/README.md](vm/README.md).
 
 Releases: push a tag `vX.Y.Z` and the release workflow attaches
 `deckstrap.sh` and its sha256 to the GitHub release. The website in `docs/`
