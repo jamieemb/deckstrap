@@ -152,9 +152,12 @@ cmd_modules() {
 }
 
 # ----------------------------------------------------------------------------
-#  gui: the full-screen installer. A local python backend (lib/server.py)
-#  serves ui/ and runs `deckstrap apply`; Firefox (installed from Flathub if
-#  missing) shows it in kiosk mode. Falls back to the zenity/terminal wizard.
+#  gui: the desktop app (an Electron AppImage built by CI, see app/). The app
+#  bundles its own copy of this tool and starts the backend itself; here we
+#  only find or download the app and hand it the profile and assets. Without a
+#  display, or if the app cannot run, the zenity/terminal wizard is used.
+APP_URL="https://github.com/jamieemb/deckstrap/releases/download/ui-latest/deckstrap-ui.AppImage"
+
 cmd_gui() {
   PROFILE=""; ASSETS=""; PROFILE_URL=""; local dry=0
   while (($#)); do
@@ -179,86 +182,42 @@ cmd_gui() {
   local fallback=(apply "$PROFILE" --assets "$ASSETS" --wizard)
   (( dry )) && fallback+=(--dry-run)
   if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
-    warn "No display found; using the terminal wizard instead of the GUI."
+    warn "No display found; using the terminal wizard instead of the desktop app."
     cmd_apply "${fallback[@]:1}"; return
   fi
-  if ! gui_ensure_firefox; then
-    warn "Could not install Firefox to show the installer; using the wizard instead."
+  local app
+  if ! app="$(gui_find_app)" && ! app="$(gui_download_app)"; then
+    warn "The desktop app is not available; using the wizard instead."
     cmd_apply "${fallback[@]:1}"; return
   fi
-
-  local url
-  exec 3< <(python3 "$DECKSTRAP_DIR/lib/server.py" --profile "$PROFILE" --assets "$ASSETS")
-  local server_pid=$!
-  if ! read -r -t 30 url <&3 || [[ "$url" != URL=* ]]; then
-    err "the GUI backend did not start"; kill "$server_pid" 2>/dev/null
+  local args=(--profile "$PROFILE" --assets "$ASSETS")
+  (( dry )) && args+=(--dry-run)
+  info "starting the desktop app: $app"
+  if ! "$app" "${args[@]}" && ! "$app" --appimage-extract-and-run "${args[@]}"; then
+    warn "The desktop app could not start; using the wizard instead."
     cmd_apply "${fallback[@]:1}"; return
   fi
-  url="${url#URL=}"; (( dry )) && url+="&dry=1"
-  info "installer UI at $url"
-
-  gui_open_firefox "$url" &
-  local ff_pid=$!
-  # whichever ends first: the UI's Close button stops the server; Alt+F4 ends Firefox
-  wait -n "$server_pid" "$ff_pid" 2>/dev/null
-  if kill -0 "$server_pid" 2>/dev/null; then
-    curl -fs -X POST -H "X-Deckstrap-Token: ${url##*t=}" "${url%%\?*}api/quit" >/dev/null 2>&1
-    sleep 1; kill "$server_pid" 2>/dev/null
-  fi
-  flatpak kill org.mozilla.firefox >/dev/null 2>&1 || true
-  kill "$ff_pid" 2>/dev/null; wait "$ff_pid" 2>/dev/null
-  exec 3<&-
   ok "installer closed; the full log is in $HOME/deckstrap.log"
 }
 
-gui_ensure_firefox() {
-  flatpak_installed org.mozilla.firefox && return 0
-  info "Firefox is needed to show the installer; installing it from Flathub..."
-  local log; log="$(mktemp)"
-  # No sudo password is known yet, so install per-user: a system install from a
-  # GUI process makes KDE pop a polkit "Authentication required" dialog, which
-  # the installer window then hides.
-  (
-    flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-    flatpak install -y --noninteractive --user flathub org.mozilla.firefox
-  ) > "$log" 2>&1 &
-  local pid=$!
-  if command -v zenity >/dev/null; then
-    ( while kill -0 "$pid" 2>/dev/null; do echo "# Preparing the installer: downloading Firefox..."; sleep 2; done ) \
-      | zenity --progress --pulsate --auto-close --no-cancel --width=460 --title="deckstrap" \
-          --text="Preparing the installer: downloading Firefox..." >/dev/null 2>&1
-  fi
-  wait "$pid"; local rc=$?
-  (( rc == 0 )) || { tail -n 5 "$log" >&2; }
-  rm -f "$log"
-  flatpak_installed org.mozilla.firefox
+# The app is looked for in: $DECKSTRAP_APP, ~/Applications, next to this tool.
+gui_find_app() {
+  local c
+  for c in "${DECKSTRAP_APP:-}" "$HOME/Applications/deckstrap-ui.AppImage" "$DECKSTRAP_DIR/../deckstrap-ui.AppImage" "$DECKSTRAP_DIR/deckstrap-ui.AppImage"; do
+    [[ -n "$c" && -f "$c" ]] || continue
+    chmod +x "$c" 2>/dev/null || true
+    echo "$c"; return 0
+  done
+  return 1
 }
 
-# gui_open_firefox <url>: Firefox in kiosk mode (true fullscreen app window)
-# with a private, pre-configured profile. Kiosk covers Steam's on-screen
-# keyboard and any dialog another program opens, so the page carries its own
-# keyboard and every step is non-interactive (sudo via askpass, no installer
-# scripts that pop dialogs). A plain window was tried and looked wrong on the
-# Deck; the toolbar-hiding stylesheet is kept as a fallback for non-kiosk use.
-gui_open_firefox() {
-  local prof="$HOME/.var/app/org.mozilla.firefox/deckstrap-ui"
-  mkdir -p "$prof/chrome"
-  cat > "$prof/user.js" <<'PREFS'
-user_pref("browser.aboutwelcome.enabled", false);
-user_pref("browser.startup.homepage_override.mstone", "ignore");
-user_pref("datareporting.policy.firstRunURL", "");
-user_pref("datareporting.policy.dataSubmissionEnabled", false);
-user_pref("browser.shell.checkDefaultBrowser", false);
-user_pref("browser.sessionstore.resume_from_crash", false);
-user_pref("browser.tabs.warnOnClose", false);
-user_pref("app.update.enabled", false);
-user_pref("toolbox.legacyUserProfileCustomizations.stylesheets", true);
-user_pref("browser.tabs.inTitlebar", 0);
-PREFS
-  cat > "$prof/chrome/userChrome.css" <<'CSS'
-#TabsToolbar, #nav-bar, #PersonalToolbar { visibility: collapse !important; }
-CSS
-  flatpak run org.mozilla.firefox --kiosk --new-instance --no-remote --profile "$prof" "$1" >/dev/null 2>&1
+gui_download_app() {
+  local dest="$HOME/Applications/deckstrap-ui.AppImage"
+  mkdir -p "$HOME/Applications"
+  info "downloading the desktop app (about 100 MB) from $APP_URL" >&2
+  curl -fL --progress-bar -o "$dest.part" "$APP_URL" || { rm -f "$dest.part"; return 1; }
+  mv -f "$dest.part" "$dest" && chmod +x "$dest"
+  echo "$dest"
 }
 
 # ----------------------------------------------------------------------------

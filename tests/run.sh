@@ -9,10 +9,16 @@ pass() { echo "  ok   $*"; }
 bad()  { echo "  FAIL $*"; fail=1; }
 
 echo "== syntax"
-for f in deckstrap build.sh install.sh tests/run.sh lib/*.sh modules/*.sh; do
+for f in deckstrap build.sh install.sh pack-profile.sh docs/launch.sh app/stage.sh tests/run.sh lib/*.sh modules/*.sh; do
   grep -q $'\r' "$f" && bad "$f has CRLF"
   bash -n "$f" && pass "$f" || bad "$f"
 done
+if command -v node >/dev/null; then
+  for f in app/main.js app/preload.js; do node --check "$f" && pass "$f" || bad "$f"; done
+  node -e 'JSON.parse(require("fs").readFileSync("app/package.json","utf8"))' && pass "app/package.json" || bad "app/package.json"
+else
+  echo "  skip app js checks (node not installed)"
+fi
 
 echo "== shellcheck"
 if command -v shellcheck >/dev/null; then

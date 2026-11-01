@@ -1,0 +1,50 @@
+name: desktop app
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "ui/**"
+      - "lib/**"
+      - "modules/**"
+      - "deckstrap"
+      - "profile.example.json"
+      - ".github/workflows/ui.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  appimage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Stage the deckstrap tool into the app
+        run: bash app/stage.sh
+      - name: Install
+        working-directory: app
+        run: npm ci --no-audit --no-fund
+      - name: Build AppImage
+        working-directory: app
+        run: npx electron-builder --linux AppImage --publish never
+      - name: Checksum
+        working-directory: app/dist
+        run: sha256sum deckstrap-ui.AppImage > deckstrap-ui.AppImage.sha256 && ls -la
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deckstrap-ui-appimage
+          path: app/dist/deckstrap-ui.AppImage
+      - name: Publish to the rolling "ui-latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ui-latest
+          name: "deckstrap desktop app (latest build)"
+          body: "Built automatically from main by the desktop app workflow. The website launchers download this file."
+          prerelease: true
+          files: |
+            app/dist/deckstrap-ui.AppImage
+            app/dist/deckstrap-ui.AppImage.sha256

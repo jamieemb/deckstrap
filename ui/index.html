@@ -78,6 +78,12 @@
   .big { font-size: 46px; font-weight: 800; margin: 6px 0; }
   .ok-text { color: var(--ok); } .bad-text { color: var(--bad); }
   .hint { color: var(--muted); font-size: 16px; }
+  /* inside the desktop app the header is the title bar: draggable, with window buttons */
+  body.electron header { -webkit-app-region: drag; }
+  .winbtns { display: none; gap: 8px; margin-left: 14px; -webkit-app-region: no-drag; }
+  body.electron .winbtns { display: flex; }
+  .winbtn { width: 46px; height: 38px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); font-size: 20px; line-height: 1; cursor: pointer; }
+  .winbtn:hover { background: #2a3447; } .winbtn.close:hover { background: var(--bad); border-color: var(--bad); }
 </style>
 </head>
 <body>
@@ -90,6 +96,11 @@
     <span class="stage" data-stage="2">Password</span>
     <span class="stage" data-stage="3">Install</span>
     <span class="stage" data-stage="4">Done</span>
+  </div>
+  <div class="winbtns">
+    <button class="winbtn" id="winMin" type="button" title="Minimise">&#8211;</button>
+    <button class="winbtn" id="winMax" type="button" title="Maximise">&#9633;</button>
+    <button class="winbtn close" id="winClose" type="button" title="Close">&#215;</button>
   </div>
 </header>
 
@@ -317,7 +328,20 @@
   $("toggleLog").onclick = () => { const w = $("logWrap"); w.classList.toggle("collapsed"); $("toggleLog").textContent = w.classList.contains("collapsed") ? "Show log" : "Hide log"; };
   $("toggleLog2").onclick = () => { const l = $("log2"); l.hidden = !l.hidden; $("toggleLog2").textContent = l.hidden ? "Show log here" : "Hide log"; };
   $("gamemode").onclick = () => api("/api/gamemode", {});
-  $("quit").onclick = async () => { await api("/api/quit", {}); document.body.innerHTML = "<main style='padding:40px'><h1>You can close this window.</h1></main>"; };
+  // Inside the desktop app (Electron): title-bar buttons and a real close.
+  const params = new URLSearchParams(location.search);
+  const inApp = params.get("app") === "electron" && !!window.deckstrapApp;
+  async function closeApp() { try { await api("/api/quit", {}); } catch (_) { /* backend may be gone */ } window.deckstrapApp.close(); }
+  if (inApp) {
+    document.body.classList.add("electron");
+    $("winMin").onclick = () => window.deckstrapApp.minimize();
+    $("winMax").onclick = () => window.deckstrapApp.toggleMaximize();
+    $("winClose").onclick = closeApp;
+  }
+  $("quit").onclick = async () => {
+    if (inApp) return closeApp();
+    await api("/api/quit", {}); document.body.innerHTML = "<main style='padding:40px'><h1>You can close this window.</h1></main>";
+  };
 
   function showProfile() {
     $("profileName").textContent = state.profile.name;
@@ -333,7 +357,19 @@
     $("profError").textContent = ""; await poll(); showProfile();
   };
 
-  (async () => { await poll(); showProfile(); })();
+  (async () => {
+    await poll();
+    // a launcher can hand over a profile pack URL (e.g. the "Jamie's Deck" launcher)
+    const pu = params.get("profile_url");
+    if (pu) {
+      $("footHint").textContent = "Loading profile…";
+      const r = await api("/api/profile", { url: pu });
+      if (!r.ok) { $("profError").textContent = r.error || "Could not load the profile from " + pu; }
+      $("footHint").textContent = "";
+      await poll();
+    }
+    showProfile();
+  })();
 })();
 </script>
 </body>

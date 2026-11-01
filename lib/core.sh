@@ -3,7 +3,7 @@
 # Sourced by the deckstrap entrypoint; DECKSTRAP_DIR is set by it.
 
 # shellcheck disable=SC2034  # used by the entrypoint and build.sh
-DECKSTRAP_VERSION="0.2.2"
+DECKSTRAP_VERSION="0.3.0"
 PROFILE_PY="$DECKSTRAP_DIR/lib/profile.py"
 USER="${USER:-$(id -un)}"
 export USER

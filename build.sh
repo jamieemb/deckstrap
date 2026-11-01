@@ -73,7 +73,8 @@ TMP="$(mktemp)"
   cat <<BOOT
 #!/usr/bin/env bash
 # deckstrap $VERSION bundle, built $(date -u +%Y-%m-%dT%H:%MZ), default mode: $MODE
-# Run in Desktop Mode:   bash deckstrap.sh            (full-screen installer for the bundled profile)
+# Run in Desktop Mode:   bash deckstrap.sh            (desktop app installer for the bundled profile;
+#                                                      put deckstrap-ui.AppImage next to this file for offline use)
 #                        bash deckstrap.sh apply       (unattended)   | wizard (checklist dialog)
 #                        bash deckstrap.sh --dry-run   (show what would run)
 #                        bash deckstrap.sh status | list | doctor
@@ -86,6 +87,8 @@ trap 'rm -rf "\$_tmp"' EXIT
 echo "Unpacking deckstrap $VERSION ..."
 tail -n +"\$((_line + 1))" "\${BASH_SOURCE[0]}" | tar -xzf - -C "\$_tmp" || { echo "payload unpack failed" >&2; exit 1; }
 _d="\$_tmp/deckstrap/deckstrap"; _p="\$_tmp/profile.json"; _a="\$_tmp/assets"; _mode="$MODE"
+_here="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+[[ -f "\$_here/deckstrap-ui.AppImage" ]] && export DECKSTRAP_APP="\$_here/deckstrap-ui.AppImage"
 case "\${1:-}" in
   gui|apply|wizard) _mode="\$1"; shift ;;
   status|validate) _c="\$1"; shift; bash "\$_d" "\$_c" "\${1:-\$_p}" "\${@:2}"; exit \$? ;;

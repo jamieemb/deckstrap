@@ -17,20 +17,34 @@ See [docs/index.html](docs/index.html).
 **Rebuilding your own Deck:** export a profile once, build a bundle that
 carries it, keep the bundle on a USB stick.
 
-## The installer UI
+## The desktop app
 
-`deckstrap gui profile.json` starts a small local backend (`lib/server.py`,
-Python standard library only) that serves `ui/index.html` and runs
-`deckstrap apply` on request, streaming progress. The page opens in Firefox
-kiosk mode, full screen, with a private pre-configured profile; if Firefox is
-not installed yet it is fetched from Flathub first behind a progress dialog.
-Screens: welcome, choose modules, sudo password (set or enter), live progress
-with step list and log, finished with next steps and a Return to Gaming Mode
-button. The backend binds to 127.0.0.1 on a random port and requires a random
-token on every call. The sudo password is passed to the apply process only
-through its environment and a `SUDO_ASKPASS` helper; it is never written to
-disk or logged. Without a display, or if Firefox cannot be installed, it falls
-back to the zenity checklist or a terminal prompt.
+The installer is an Electron desktop app packaged as a Linux AppImage
+(`app/`), built by the `desktop app` workflow on every push to main and
+published to the rolling `ui-latest` GitHub release. The website launchers
+run `docs/launch.sh`, which downloads it to `~/Applications` and starts it.
+
+The app is a window around the installer, not a rewrite of it: it bundles the
+deckstrap tool as a resource, starts the Python backend (`lib/server.py`,
+standard library only) itself, and shows the backend's page in a frameless,
+maximized window with its own title-bar buttons. Screens: welcome, choose
+modules, sudo password (set or enter, with an on-screen keyboard), live
+progress with step list and log, finished with next steps and a Return to
+Gaming Mode button. The backend binds to 127.0.0.1 on a random port and
+requires a random token on every call. The sudo password is passed to the
+apply process only through its environment and a `SUDO_ASKPASS` helper; it is
+never written to disk or logged. Every step is non-interactive: Flatpak
+installs go through sudo and CryoUtilities is fetched as a verified binary,
+so no other program opens a dialog during a run.
+
+```
+deckstrap-ui.AppImage [--profile FILE] [--assets DIR] [--profile-url URL] [--dry-run]
+cd app && npm install && npm start -- --no-sudo --dry-run     # development on any OS with python3
+```
+
+`deckstrap gui` finds the app (`$DECKSTRAP_APP`, `~/Applications`, or next to
+the bundle), downloads it if missing, and otherwise falls back to the zenity
+checklist or a terminal prompt.
 
 ## Commands
 

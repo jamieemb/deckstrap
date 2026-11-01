@@ -1,0 +1,35 @@
+{
+  "name": "deckstrap-ui",
+  "productName": "deckstrap",
+  "version": "0.3.0",
+  "description": "deckstrap installer: set up a Steam Deck from a profile",
+  "author": "Jamie Embleton",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --dev",
+    "stage": "bash stage.sh",
+    "build": "bash stage.sh && electron-builder --linux AppImage --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "io.github.jamieemb.deckstrap",
+    "productName": "deckstrap",
+    "artifactName": "deckstrap-ui.AppImage",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "package.json"],
+    "extraResources": [
+      { "from": "build-tool", "to": "deckstrap" }
+    ],
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility",
+      "icon": "icon.png",
+      "executableName": "deckstrap-ui",
+      "desktop": { "Name": "deckstrap", "Comment": "Set up this Steam Deck from a profile" }
+    }
+  }
+}

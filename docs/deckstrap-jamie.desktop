@@ -6,4 +6,4 @@ Comment=Set up this Steam Deck exactly like Jamie's: all plugins, themes and set
 Icon=steamdeck-gaming-return
 Terminal=false
 Categories=Utility;
-Exec=bash -c "if curl -fsSL -o /tmp/deckstrap.sh https://jamieemb.github.io/deckstrap/deckstrap.sh; then konsole --noclose -e bash /tmp/deckstrap.sh --profile-url https://jamieemb.github.io/deckstrap/profiles/jamie-deck.tar.gz; else zenity --error --width=360 --text='deckstrap: download failed. Check the internet connection and try again.'; fi"
+Exec=bash -c "curl -fsSL https://jamieemb.github.io/deckstrap/launch.sh | bash -s -- --profile-url https://jamieemb.github.io/deckstrap/profiles/jamie-deck.tar.gz || zenity --error --width=400 --text='deckstrap: the installer could not be downloaded or started. Check the internet connection and try again.'"
