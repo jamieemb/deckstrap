@@ -3,7 +3,7 @@
 # Sourced by the deckstrap entrypoint; DECKSTRAP_DIR is set by it.
 
 # shellcheck disable=SC2034  # used by the entrypoint and build.sh
-DECKSTRAP_VERSION="0.1.1"
+DECKSTRAP_VERSION="0.2.0"
 PROFILE_PY="$DECKSTRAP_DIR/lib/profile.py"
 USER="${USER:-$(id -un)}"
 export USER
@@ -114,6 +114,34 @@ if k not in d:
 ' "$@"
 }
 flatpak_installed() { flatpak info "$1" >/dev/null 2>&1; }
+
+# fetch_profile_pack <url-or-path> <destdir>
+# A profile source is either a profile.json or a "profile pack": a .tar.gz
+# holding profile.json and an optional assets/ folder (themes, sounds, home,
+# bios). Downloads/unpacks into <destdir>, prints the profile.json path and
+# sets PACK_ASSETS to the assets folder (which may not exist).
+PACK_ASSETS=""
+fetch_profile_pack() {
+  local src="$1" dest="$2" file
+  mkdir -p "$dest"
+  case "$src" in
+    http://*|https://*|file://*)
+      file="$dest/source.bin"
+      info "downloading profile from $src" >&2   # stdout carries only the resulting path
+      curl -fL --progress-bar -o "$file" "$src" || { err "could not download $src"; return 1; } ;;
+    *)
+      [[ -f "$src" ]] || { err "profile source not found: $src"; return 1; }
+      file="$src" ;;
+  esac
+  if python3 -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8-sig"))' "$file" 2>/dev/null; then
+    cp "$file" "$dest/profile.json"
+  else
+    tar -xzf "$file" -C "$dest" 2>/dev/null || { err "not a profile.json or a .tar.gz profile pack: $src"; return 1; }
+    [[ -f "$dest/profile.json" ]] || { err "profile pack has no profile.json at its root"; return 1; }
+  fi
+  PACK_ASSETS="$dest/assets"
+  echo "$dest/profile.json"
+}
 
 # ---------------------------------------------------------------------------
 #  Store helpers

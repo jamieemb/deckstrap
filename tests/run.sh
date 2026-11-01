@@ -93,6 +93,27 @@ grep -q 'Open Firefox once' "$T/state.json" && pass "notes collected" || bad "no
 curl -fs "${auth[@]}" -X POST "${base}api/quit" >/dev/null && pass "quit" || bad "quit"
 wait "$SRV" 2>/dev/null
 
+echo "== profile packs"
+mkdir -p "$T/pkassets/themes/Centered Home"
+echo '/* css */' > "$T/pkassets/themes/Centered Home/shared.css"
+cp "$FIX/themes/Centered Home/theme.json" "$T/pkassets/themes/Centered Home/"
+bash ./pack-profile.sh --profile "$T/profile.json" --assets "$T/pkassets" --out "$T/pack.tar.gz" > "$T/pack.out" 2>&1 && pass "pack-profile" || bad "pack-profile: $(cat "$T/pack.out")"
+tar -tzf "$T/pack.tar.gz" | grep -q 'assets/themes/Centered Home/shared.css' && pass "pack holds theme assets" || bad "pack contents"
+# file:// URLs that work for curl and python on Linux and Git Bash
+fileurl() { local p; p="$(cygpath -m "$1" 2>/dev/null || echo "$1")"; [[ "$p" == /* ]] || p="/$p"; echo "file://$p"; }
+pk_url="$(fileurl "$T/pack.tar.gz")"
+HOME="$T/home4" bash ./deckstrap apply profile.example.json --profile-url "$pk_url" --dry-run > "$T/pk.out" 2>&1 && grep -q 'Fixture Deck' "$T/pk.out" && pass "apply --profile-url (pack)" || bad "apply --profile-url pack: $(tail -5 "$T/pk.out")"
+HOME="$T/home5" bash ./deckstrap apply profile.example.json --profile-url "$(fileurl "$T/profile.json")" --dry-run > "$T/pj.out" 2>&1 && grep -q 'Fixture Deck' "$T/pj.out" && pass "apply --profile-url (json)" || bad "apply --profile-url json: $(tail -5 "$T/pj.out")"
+HOME="$T/home6" python3 lib/server.py --profile profile.example.json > "$T/srv2.out" 2>&1 &
+SRV2=$!
+for _ in $(seq 1 50); do grep -q '^URL=' "$T/srv2.out" 2>/dev/null && break; sleep 0.2; done
+url2="$(sed -n 's/^URL=//p' "$T/srv2.out" | head -n1)"; tok2="${url2##*t=}"; base2="${url2%%\?*}"
+auth2=(-H "X-Deckstrap-Token: $tok2")
+resp="$(curl -s "${auth2[@]}" -H 'Content-Type: application/json' -d "{\"url\":\"$pk_url\"}" "${base2}api/profile")"
+grep -q '"ok": true' <<<"$resp" && pass "api: load profile pack" || bad "api profile: $resp"
+curl -fs "${auth2[@]}" "${base2}api/state" | grep -q '"name": "Fixture Deck"' && pass "api: state shows the new profile" || bad "api state after switch"
+curl -fs "${auth2[@]}" -X POST "${base2}api/quit" >/dev/null; wait "$SRV2" 2>/dev/null
+
 echo "== bundle"
 bash ./build.sh --profile "$T/profile.json" --assets "$T/assets" --out "$T/bundle.sh" --mode apply > "$T/build.out" 2>&1 && pass "build" || bad "build: $(cat "$T/build.out")"
 grep -q '^deckstrap ' <<<"$(bash "$T/bundle.sh" version 2>/dev/null)" && pass "bundle runs tool" || bad "bundle version"

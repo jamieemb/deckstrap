@@ -31,7 +31,9 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
+import urllib.request
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -56,14 +58,55 @@ NOT_ENABLED = re.compile(r"^-- (\S+): not enabled")
 class State:
     def __init__(self, profile: Path, assets: Path):
         self.lock = threading.Lock()
+        self.sudo_pw = None
+        self.sudo_verified = False
+        self.quit_event = threading.Event()
+        self.source = ""
+        self.use_profile(profile, assets)
+
+    def use_profile(self, profile: Path, assets: Path):
         self.profile = profile
         self.assets = assets
         self.prof = json.loads(profile.read_text(encoding="utf-8-sig"))
         self.modules = self._load_modules()
-        self.sudo_pw = None
-        self.sudo_verified = False
         self.reset_run()
-        self.quit_event = threading.Event()
+
+    def load_profile_source(self, url: str):
+        """Fetch a profile.json or a .tar.gz profile pack from a URL (http(s)/file) and switch to it."""
+        if not re.match(r"^(https?|file)://", url):
+            return False, "enter an http(s) URL"
+        dest = Path(tempfile.mkdtemp(prefix="deckstrap-profile."))
+        src = dest / "source.bin"
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r, open(src, "wb") as f:
+                f.write(r.read())
+        except Exception as ex:   # noqa: BLE001
+            return False, f"download failed: {ex}"
+        try:
+            json.loads(src.read_text(encoding="utf-8-sig"))
+            (dest / "profile.json").write_bytes(src.read_bytes())
+        except Exception:
+            try:
+                with tarfile.open(src, "r:gz") as t:
+                    for m in t.getmembers():
+                        if m.name.startswith("/") or ".." in Path(m.name).parts:
+                            return False, "pack contains unsafe paths"
+                    t.extractall(dest)
+            except Exception as ex:   # noqa: BLE001
+                return False, f"not a profile.json or .tar.gz pack: {ex}"
+            if not (dest / "profile.json").is_file():
+                return False, "pack has no profile.json at its root"
+        chk = subprocess.run([sys.executable, str(HERE / "profile.py"), "validate", str(dest / "profile.json")],
+                             capture_output=True, text=True)
+        if chk.returncode != 0:
+            return False, "profile failed validation: " + chk.stderr.strip()[:200]
+        assets = dest / "assets" if (dest / "assets").is_dir() else dest
+        with self.lock:
+            if self.run["running"]:
+                return False, "an install is running"
+            self.use_profile(dest / "profile.json", assets)
+            self.source = url
+        return True, ""
 
     def reset_run(self):
         self.run = {
@@ -235,6 +278,7 @@ class State:
                     "plugins": len(self.prof.get("decky", {}).get("plugins", [])),
                     "themes": len(self.prof.get("decky", {}).get("themes", [])),
                     "flatpaks": len(self.prof.get("flatpaks", [])),
+                    "source": self.source,
                 },
                 "modules": self.modules,
                 "sudo": {"password_set": self.password_is_set(), "verified": self.sudo_verified},
@@ -306,6 +350,9 @@ def make_handler(state: State, token: str):
                 b = self._body()
                 ok, err = state.start(b.get("only") or [], bool(b.get("dry_run")))
                 return self._json(200 if ok else 409, {"ok": ok, "error": err})
+            if u.path == "/api/profile":
+                ok, err = state.load_profile_source(self._body().get("url", "").strip())
+                return self._json(200, {"ok": ok, "error": err})
             if u.path == "/api/gamemode":
                 subprocess.Popen(["qdbus", "org.kde.Shutdown", "/Shutdown", "logout"])
                 return self._json(200, {"ok": True})

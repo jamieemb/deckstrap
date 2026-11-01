@@ -2,8 +2,8 @@
 # =============================================================================
 #  deckstrap - set up a Steam Deck from a profile, fresh, every time
 #
-#    deckstrap gui profile.json [--assets DIR]          # full-screen installer (Firefox kiosk)
-#    deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--wizard] [--assets DIR]
+#    deckstrap gui profile.json [--assets DIR] [--profile-url URL]   # full-screen installer
+#    deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--wizard] [--assets DIR] [--profile-url URL]
 #    deckstrap export [--from ~/homebrew] [--name NAME] [--redact] [--out profile.json]
 #    deckstrap status profile.json | modules profile.json
 #    deckstrap list | doctor | validate profile.json | version
@@ -26,13 +26,23 @@ usage() {
 }
 
 # ----------------------------------------------------------------------------
+# --profile-url URL|PATH: use a profile.json or a .tar.gz profile pack from
+# elsewhere instead of the bundled/positional one (assets come from the pack).
+resolve_profile_url() {
+  local d; d="$(mktemp -d "${TMPDIR:-/tmp}/deckstrap-profile.XXXXXX")"
+  PROFILE="$(fetch_profile_pack "$PROFILE_URL" "$d")" || die "could not load profile from $PROFILE_URL"
+  ASSETS="$PACK_ASSETS"; [[ -d "$ASSETS" ]] || ASSETS="$d"
+  info "using profile $(pget name 'unnamed') from $PROFILE_URL"
+}
+
 cmd_apply() {
-  PROFILE=""; ONLY=""; SKIP=""; DRY_RUN=0; ASSETS=""; WIZARD=0
+  PROFILE=""; ONLY=""; SKIP=""; DRY_RUN=0; ASSETS=""; WIZARD=0; PROFILE_URL=""
   while (($#)); do
     case "$1" in
       --only)    ONLY="$2"; shift 2 ;;
       --skip)    SKIP="$2"; shift 2 ;;
       --assets)  ASSETS="$2"; shift 2 ;;
+      --profile-url) PROFILE_URL="$2"; shift 2 ;;
       --dry-run) DRY_RUN=1; shift ;;
       --wizard)  WIZARD=1; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -40,6 +50,7 @@ cmd_apply() {
       *)         PROFILE="$1"; shift ;;
     esac
   done
+  [[ -n "$PROFILE_URL" ]] && resolve_profile_url
   [[ -n "$PROFILE" ]] || die "usage: deckstrap apply <profile.json> [options]"
   [[ -f "$PROFILE" ]] || die "profile not found: $PROFILE"
   PROFILE="$(readlink -f "$PROFILE")"
@@ -145,17 +156,19 @@ cmd_modules() {
 #  serves ui/ and runs `deckstrap apply`; Firefox (installed from Flathub if
 #  missing) shows it in kiosk mode. Falls back to the zenity/terminal wizard.
 cmd_gui() {
-  PROFILE=""; ASSETS=""; local dry=0
+  PROFILE=""; ASSETS=""; PROFILE_URL=""; local dry=0
   while (($#)); do
     case "$1" in
       --assets)  ASSETS="$2"; shift 2 ;;
+      --profile-url) PROFILE_URL="$2"; shift 2 ;;
       --dry-run) dry=1; shift ;;
       -h|--help) usage; exit 0 ;;
       -*)        die "unknown option: $1" ;;
       *)         PROFILE="$1"; shift ;;
     esac
   done
-  [[ -n "$PROFILE" && -f "$PROFILE" ]] || die "usage: deckstrap gui <profile.json> [--assets DIR]"
+  [[ -n "$PROFILE_URL" ]] && resolve_profile_url
+  [[ -n "$PROFILE" && -f "$PROFILE" ]] || die "usage: deckstrap gui <profile.json> [--assets DIR] [--profile-url URL]"
   PROFILE="$(readlink -f "$PROFILE")"
   python3 "$PROFILE_PY" validate "$PROFILE" || die "profile failed validation"
   if [[ -z "$ASSETS" ]]; then

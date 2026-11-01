@@ -35,13 +35,25 @@ back to the zenity checklist or a terminal prompt.
 ## Commands
 
 ```
-deckstrap gui profile.json [--assets DIR] [--dry-run]
-deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--wizard] [--assets DIR]
+deckstrap gui profile.json [--assets DIR] [--dry-run] [--profile-url URL]
+deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--wizard] [--assets DIR] [--profile-url URL]
 deckstrap export [--from ~/homebrew] [--name NAME] [--redact] [--out profile.json]
 deckstrap status profile.json      # what the Deck has vs what the profile wants
 deckstrap modules profile.json     # name / wanted / description, for tooling
 deckstrap list | doctor | validate profile.json | version
 ```
+
+## Profile packs: share or carry a complete setup
+
+`./pack-profile.sh --profile P --assets DIR --out my-deck.tar.gz` makes a
+profile pack: `profile.json` plus `assets/themes` and `assets/sounds`, the
+exact backed-up theme and sound-pack folders. Host it anywhere and any bundle
+can use it: `bash deckstrap.sh --profile-url https://.../my-deck.tar.gz`, or
+paste the URL into the installer's "Use a different profile" box on the
+welcome screen. A plain `profile.json` URL works too (themes then come from
+the store). `--with-home` and `--with-bios` add personal files and BIOS
+images, which are off by default since a pack is usually public. The website
+offers a second launcher that loads the author's own pack this way.
 
 `./build.sh --profile P --assets DIR --out deckstrap.sh [--mode gui|wizard|apply]`
 packs the tool, the profile and the assets folder into one self-extracting

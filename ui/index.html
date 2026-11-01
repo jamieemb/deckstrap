@@ -109,6 +109,14 @@
           <div class="stat"><b id="stFlatpaks">0</b><span>apps</span></div>
         </div>
         <p class="hint" style="margin:14px 0 0">You will be asked for a sudo password. SteamOS has none by default, so you can choose one here.</p>
+        <details style="margin-top:14px">
+          <summary class="hint" style="cursor:pointer">Use a different profile</summary>
+          <div class="row" style="margin-top:10px">
+            <input type="text" id="profUrl" placeholder="https://… profile.json or .tar.gz pack" style="min-height:52px;font-size:18px">
+            <button class="btn" id="profLoad" type="button" style="min-height:52px">Load</button>
+          </div>
+          <div class="error" id="profError"></div>
+        </details>
       </div>
     </div>
   </section>
@@ -275,12 +283,21 @@
   $("gamemode").onclick = () => api("/api/gamemode", {});
   $("quit").onclick = async () => { await api("/api/quit", {}); document.body.innerHTML = "<main style='padding:40px'><h1>You can close this window.</h1></main>"; };
 
-  (async () => {
-    await poll();
+  function showProfile() {
     $("profileName").textContent = state.profile.name;
     $("stPlugins").textContent = state.profile.plugins; $("stThemes").textContent = state.profile.themes; $("stFlatpaks").textContent = state.profile.flatpaks;
     selected = new Set(state.modules.filter(m => m.wanted).map(m => m.name));
-  })();
+  }
+  $("profLoad").onclick = async () => {
+    const url = $("profUrl").value.trim(); if (!url) return;
+    $("profLoad").disabled = true; $("profError").textContent = "Loading…";
+    const r = await api("/api/profile", { url });
+    $("profLoad").disabled = false;
+    if (!r.ok) { $("profError").textContent = r.error || "Could not load that profile."; return; }
+    $("profError").textContent = ""; await poll(); showProfile();
+  };
+
+  (async () => { await poll(); showProfile(); })();
 })();
 </script>
 </body>
