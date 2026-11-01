@@ -2,12 +2,13 @@
 # =============================================================================
 #  build.sh - pack deckstrap + a profile (+ optional assets) into ONE file
 #
-#      ./build.sh                                  # -> dist/deckstrap.sh (example profile, wizard on)
+#      ./build.sh                                  # -> dist/deckstrap.sh (example profile, GUI)
 #      ./build.sh --profile ~/me/profile.json --assets ~/me --out /run/media/deck/USB/deckstrap.sh
-#      ./build.sh --no-wizard                       # apply straight away, no module picker
+#      ./build.sh --mode apply                      # unattended: apply the profile, no UI
+#      ./build.sh --mode wizard                     # zenity/terminal checklist instead of the GUI
 #
 #  The output is a self-extracting bash script: a short bootstrap, a marker
-#  line, then a tar.gz of deckstrap/ (the tool), profile.json and assets/.
+#  line, then a tar.gz of deckstrap/ (the tool + ui), profile.json and assets/.
 #  assets/ holds only these subfolders if present: bios home themes sounds downloads
 #
 #  On the Deck (Desktop Mode > Konsole):   bash deckstrap.sh
@@ -18,7 +19,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="$REPO_DIR/profile.example.json"
 ASSETS=""
 OUT="$REPO_DIR/dist/deckstrap.sh"
-WIZARD=1
+MODE="gui"
 MARKER="__PAYLOAD_BEGINS__"
 
 while (($#)); do
@@ -26,11 +27,13 @@ while (($#)); do
     --profile)   PROFILE="$2"; shift 2 ;;
     --assets)    ASSETS="$2"; shift 2 ;;
     --out)       OUT="$2"; shift 2 ;;
-    --no-wizard) WIZARD=0; shift ;;
-    -h|--help)   sed -n '2,14p' "$0"; exit 0 ;;
+    --mode)      MODE="$2"; shift 2 ;;
+    --no-wizard) MODE="apply"; shift ;;
+    -h|--help)   sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
+case "$MODE" in gui|wizard|apply) ;; *) echo "--mode must be gui, wizard or apply" >&2; exit 1 ;; esac
 
 [[ -f "$PROFILE" ]] || { echo "profile not found: $PROFILE" >&2; exit 1; }
 [[ -d "$OUT" ]] && OUT="${OUT%/}/deckstrap.sh"
@@ -49,7 +52,7 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/deckstrap" "$STAGE/assets"
 cp "$REPO_DIR/deckstrap" "$STAGE/deckstrap/"
-cp -r "$REPO_DIR/lib" "$REPO_DIR/modules" "$STAGE/deckstrap/"
+cp -r "$REPO_DIR/lib" "$REPO_DIR/modules" "$REPO_DIR/ui" "$STAGE/deckstrap/"
 cp "$PROFILE" "$STAGE/profile.json"
 ASSET_LIST=""
 if [[ -n "$ASSETS" ]]; then
@@ -59,13 +62,13 @@ if [[ -n "$ASSETS" ]]; then
   done
 fi
 
-WIZ_FLAG=""; (( WIZARD )) && WIZ_FLAG="--wizard"
 TMP="$(mktemp)"
 {
   cat <<BOOT
 #!/usr/bin/env bash
-# deckstrap $VERSION bundle, built $(date -u +%Y-%m-%dT%H:%MZ)
-# Run in Desktop Mode:   bash deckstrap.sh            (applies the bundled profile)
+# deckstrap $VERSION bundle, built $(date -u +%Y-%m-%dT%H:%MZ), default mode: $MODE
+# Run in Desktop Mode:   bash deckstrap.sh            (full-screen installer for the bundled profile)
+#                        bash deckstrap.sh apply       (unattended)   | wizard (checklist dialog)
 #                        bash deckstrap.sh --dry-run   (show what would run)
 #                        bash deckstrap.sh status | list | doctor
 # https://github.com/jamieemb/deckstrap
@@ -76,11 +79,17 @@ _tmp="\$(mktemp -d "\${TMPDIR:-/tmp}/deckstrap.XXXXXX")"
 trap 'rm -rf "\$_tmp"' EXIT
 echo "Unpacking deckstrap $VERSION ..."
 tail -n +"\$((_line + 1))" "\${BASH_SOURCE[0]}" | tar -xzf - -C "\$_tmp" || { echo "payload unpack failed" >&2; exit 1; }
-_d="\$_tmp/deckstrap/deckstrap"; _p="\$_tmp/profile.json"; _a="\$_tmp/assets"
+_d="\$_tmp/deckstrap/deckstrap"; _p="\$_tmp/profile.json"; _a="\$_tmp/assets"; _mode="$MODE"
 case "\${1:-}" in
-  status|validate) _c="\$1"; shift; bash "\$_d" "\$_c" "\${1:-\$_p}" "\${@:2}" ;;
-  list|doctor|export|version|help|-h|--help) bash "\$_d" "\$@" ;;
-  *) bash "\$_d" apply "\$_p" --assets "\$_a" $WIZ_FLAG "\$@" ;;
+  gui|apply|wizard) _mode="\$1"; shift ;;
+  status|validate) _c="\$1"; shift; bash "\$_d" "\$_c" "\${1:-\$_p}" "\${@:2}"; exit \$? ;;
+  list|doctor|export|version|modules|help|-h|--help) bash "\$_d" "\$@"; exit \$? ;;
+esac
+[[ "\$_mode" == gui && -z "\${DISPLAY:-}\${WAYLAND_DISPLAY:-}" ]] && _mode=wizard
+case "\$_mode" in
+  gui)    bash "\$_d" gui "\$_p" --assets "\$_a" "\$@" ;;
+  wizard) bash "\$_d" apply "\$_p" --assets "\$_a" --wizard "\$@" ;;
+  *)      bash "\$_d" apply "\$_p" --assets "\$_a" "\$@" ;;
 esac
 _rc=\$?
 exit \$_rc
@@ -97,4 +106,4 @@ head -n "$((line - 1))" "$TMP" | bash -n || { echo "bootstrap has a syntax error
 
 mv "$TMP" "$OUT"
 chmod +x "$OUT" 2>/dev/null || true
-echo "Built $OUT ($(du -h "$OUT" | cut -f1), $count files; profile: $(basename "$PROFILE"); assets: ${ASSET_LIST:-none}; wizard: $WIZARD)"
+echo "Built $OUT ($(du -h "$OUT" | cut -f1), $count files; profile: $(basename "$PROFILE"); assets: ${ASSET_LIST:-none}; mode: $MODE)"

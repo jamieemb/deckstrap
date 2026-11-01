@@ -65,12 +65,42 @@ grep -q 'not enabled in profile' "$T/dry.out" && pass "disabled modules reported
 HOME="$T/home" bash ./deckstrap apply "$T/profile.json" --dry-run --only firefox > "$T/only.out" 2>&1
 grep -q 'Firefox policies' "$T/only.out" && ! grep -q 'Decky plugins' "$T/only.out" && pass "--only filters" || bad "--only"
 
-echo "== bundle"
+echo "== modules command"
+grep -q $'^decky\tyes\t' <<<"$(bash ./deckstrap modules "$T/profile.json")" && pass "modules lists decky as wanted" || bad "modules"
+
+echo "== gui backend"
 mkdir -p "$T/assets/bios"; echo bios > "$T/assets/bios/x.bin"
-bash ./build.sh --profile "$T/profile.json" --assets "$T/assets" --out "$T/bundle.sh" --no-wizard > "$T/build.out" 2>&1 && pass "build" || bad "build: $(cat "$T/build.out")"
+HOME="$T/home3" python3 lib/server.py --profile "$T/profile.json" --assets "$T/assets" > "$T/srv.out" 2>&1 &
+SRV=$!
+for _ in $(seq 1 50); do grep -q '^URL=' "$T/srv.out" 2>/dev/null && break; sleep 0.2; done
+url="$(sed -n 's/^URL=//p' "$T/srv.out" | head -n1)"; tok="${url##*t=}"; base="${url%%\?*}"
+[[ -n "$url" ]] && pass "backend started at $base" || bad "backend start: $(cat "$T/srv.out")"
+auth=(-H "X-Deckstrap-Token: $tok")
+curl -fs "${auth[@]}" "${base}api/state" > "$T/state.json" && pass "state" || bad "state"
+grep -q '"name": "decky"' "$T/state.json" && pass "state lists decky module" || bad "state modules: $(head -c 300 "$T/state.json")"
+grep -q '"plugins": 2' "$T/state.json" && pass "state has profile summary" || bad "profile summary"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' "${base}api/state")" == "403" ]] && pass "token required" || bad "token not enforced"
+curl -fs "${base}index.html" | grep -q '<title>deckstrap' && pass "serves ui" || bad "ui not served"
+curl -fs "${auth[@]}" -H 'Content-Type: application/json' -d '{"only":["firefox","decky","emudeck"],"dry_run":true}' "${base}api/start" | grep -q '"ok": true' && pass "start dry-run" || bad "start"
+for _ in $(seq 1 150); do
+  curl -fs "${auth[@]}" "${base}api/state" > "$T/state.json"
+  grep -q '"running": false' "$T/state.json" && grep -q '"finished": [0-9]' "$T/state.json" && break
+  sleep 0.3
+done
+grep -q '"name": "Decky plugins (fresh)", "status": "skipped"' "$T/state.json" && pass "steps parsed from the run" || bad "steps: $(grep -o '"steps": \[[^]]*\]' "$T/state.json" | head -c 400)"
+grep -q '"name": "Emulator BIOS files"' "$T/state.json" && pass "assets reached the run" || bad "assets"
+grep -q 'Open Firefox once' "$T/state.json" && pass "notes collected" || bad "notes: $(grep -o '"notes": \[[^]]*\]' "$T/state.json")"
+curl -fs "${auth[@]}" -X POST "${base}api/quit" >/dev/null && pass "quit" || bad "quit"
+wait "$SRV" 2>/dev/null
+
+echo "== bundle"
+bash ./build.sh --profile "$T/profile.json" --assets "$T/assets" --out "$T/bundle.sh" --mode apply > "$T/build.out" 2>&1 && pass "build" || bad "build: $(cat "$T/build.out")"
 grep -q '^deckstrap ' <<<"$(bash "$T/bundle.sh" version 2>/dev/null)" && pass "bundle runs tool" || bad "bundle version"
 grep -q '^MODULE' <<<"$(bash "$T/bundle.sh" status 2>/dev/null)" && pass "bundle status" || bad "bundle status"
 HOME="$T/home2" bash "$T/bundle.sh" --dry-run > "$T/bundle.out" 2>&1 && grep -q 'Emulator BIOS' "$T/bundle.out" && pass "bundle dry-run sees assets" || bad "bundle dry-run: $(tail -5 "$T/bundle.out")"
+pl="$(grep -a -n -m1 '^__PAYLOAD_BEGINS__$' "$T/bundle.sh" | cut -d: -f1)"
+tail -n +"$((pl + 1))" "$T/bundle.sh" | tar -tzf - > "$T/bundle.list" 2>/dev/null
+grep -q 'ui/index.html' "$T/bundle.list" && pass "bundle carries the ui" || bad "ui missing from bundle"
 shopt -s nullglob; leftovers=(/tmp/deckstrap.* "${TMPDIR:-/tmp}"/deckstrap.*); shopt -u nullglob
 (( ${#leftovers[@]} )) && bad "bundle left temp dirs: ${leftovers[*]}" || pass "bundle cleans up"
 

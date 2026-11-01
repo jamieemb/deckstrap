@@ -2,9 +2,10 @@
 # =============================================================================
 #  deckstrap - set up a Steam Deck from a profile, fresh, every time
 #
-#    deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--assets DIR]
+#    deckstrap gui profile.json [--assets DIR]          # full-screen installer (Firefox kiosk)
+#    deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--wizard] [--assets DIR]
 #    deckstrap export [--from ~/homebrew] [--name NAME] [--redact] [--out profile.json]
-#    deckstrap status profile.json
+#    deckstrap status profile.json | modules profile.json
 #    deckstrap list | doctor | validate profile.json | version
 #
 #  Run from Desktop Mode as the normal "deck" user (never with sudo).
@@ -16,7 +17,7 @@ DECKSTRAP_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 source "$DECKSTRAP_DIR/lib/core.sh"
 
 usage() {
-  sed -n '3,10p' "${BASH_SOURCE[0]}" | sed -E 's/^# ?//; s/^ {0,2}//'
+  sed -n '3,11p' "${BASH_SOURCE[0]}" | sed -E 's/^# ?//; s/^ {0,2}//'
   echo
   echo "Modules (enable them in the profile):"
   load_modules
@@ -126,6 +127,116 @@ wizard_pick_modules() {
 }
 
 # ----------------------------------------------------------------------------
+#  modules: machine-readable module list for the GUI backend (name, wanted, desc)
+cmd_modules() {
+  PROFILE="${1:-}"; [[ -f "$PROFILE" ]] || die "usage: deckstrap modules <profile.json>"
+  PROFILE="$(readlink -f "$PROFILE")"; export PROFILE
+  ASSETS="${ASSETS:-$(dirname "$PROFILE")}"; export ASSETS
+  load_modules
+  local m wanted
+  for m in "${MODULES[@]}"; do
+    wanted="no"; "mod_${m}_wanted" && wanted="yes"
+    printf '%s\t%s\t%s\n' "$m" "$wanted" "${MOD_DESCS[$m]}"
+  done
+}
+
+# ----------------------------------------------------------------------------
+#  gui: the full-screen installer. A local python backend (lib/server.py)
+#  serves ui/ and runs `deckstrap apply`; Firefox (installed from Flathub if
+#  missing) shows it in kiosk mode. Falls back to the zenity/terminal wizard.
+cmd_gui() {
+  PROFILE=""; ASSETS=""; local dry=0
+  while (($#)); do
+    case "$1" in
+      --assets)  ASSETS="$2"; shift 2 ;;
+      --dry-run) dry=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      -*)        die "unknown option: $1" ;;
+      *)         PROFILE="$1"; shift ;;
+    esac
+  done
+  [[ -n "$PROFILE" && -f "$PROFILE" ]] || die "usage: deckstrap gui <profile.json> [--assets DIR]"
+  PROFILE="$(readlink -f "$PROFILE")"
+  python3 "$PROFILE_PY" validate "$PROFILE" || die "profile failed validation"
+  if [[ -z "$ASSETS" ]]; then
+    ASSETS="$(dirname "$PROFILE")"; [[ -d "$ASSETS/assets" ]] && ASSETS="$ASSETS/assets"
+  fi
+  export PROFILE ASSETS
+
+  local fallback=(apply "$PROFILE" --assets "$ASSETS" --wizard)
+  (( dry )) && fallback+=(--dry-run)
+  if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+    warn "No display found; using the terminal wizard instead of the GUI."
+    cmd_apply "${fallback[@]:1}"; return
+  fi
+  if ! gui_ensure_firefox; then
+    warn "Could not install Firefox to show the installer; using the wizard instead."
+    cmd_apply "${fallback[@]:1}"; return
+  fi
+
+  local url
+  exec 3< <(python3 "$DECKSTRAP_DIR/lib/server.py" --profile "$PROFILE" --assets "$ASSETS")
+  local server_pid=$!
+  if ! read -r -t 30 url <&3 || [[ "$url" != URL=* ]]; then
+    err "the GUI backend did not start"; kill "$server_pid" 2>/dev/null
+    cmd_apply "${fallback[@]:1}"; return
+  fi
+  url="${url#URL=}"; (( dry )) && url+="&dry=1"
+  info "installer UI at $url"
+
+  gui_open_firefox "$url" &
+  local ff_pid=$!
+  # whichever ends first: the UI's Close button stops the server; Alt+F4 ends Firefox
+  wait -n "$server_pid" "$ff_pid" 2>/dev/null
+  if kill -0 "$server_pid" 2>/dev/null; then
+    curl -fs -X POST -H "X-Deckstrap-Token: ${url##*t=}" "${url%%\?*}api/quit" >/dev/null 2>&1
+    sleep 1; kill "$server_pid" 2>/dev/null
+  fi
+  flatpak kill org.mozilla.firefox >/dev/null 2>&1 || true
+  kill "$ff_pid" 2>/dev/null; wait "$ff_pid" 2>/dev/null
+  exec 3<&-
+  ok "installer closed; the full log is in $HOME/deckstrap.log"
+}
+
+gui_ensure_firefox() {
+  flatpak_installed org.mozilla.firefox && return 0
+  info "Firefox is needed to show the installer; installing it from Flathub..."
+  local log; log="$(mktemp)"
+  (
+    flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
+      || flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    flatpak install -y --noninteractive flathub org.mozilla.firefox \
+      || flatpak install -y --noninteractive --user flathub org.mozilla.firefox
+  ) > "$log" 2>&1 &
+  local pid=$!
+  if command -v zenity >/dev/null; then
+    ( while kill -0 "$pid" 2>/dev/null; do echo "# Preparing the installer: downloading Firefox..."; sleep 2; done ) \
+      | zenity --progress --pulsate --auto-close --no-cancel --width=460 --title="deckstrap" \
+          --text="Preparing the installer: downloading Firefox..." >/dev/null 2>&1
+  fi
+  wait "$pid"; local rc=$?
+  (( rc == 0 )) || { tail -n 5 "$log" >&2; }
+  rm -f "$log"
+  flatpak_installed org.mozilla.firefox
+}
+
+gui_open_firefox() {   # gui_open_firefox <url>: kiosk window with a private, pre-configured profile
+  local prof="$HOME/.var/app/org.mozilla.firefox/deckstrap-ui"
+  mkdir -p "$prof"
+  cat > "$prof/user.js" <<'PREFS'
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("datareporting.policy.firstRunURL", "");
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("browser.tabs.warnOnClose", false);
+user_pref("app.update.enabled", false);
+PREFS
+  flatpak run org.mozilla.firefox --kiosk --new-instance --no-remote --profile "$prof" "$1" >/dev/null 2>&1
+}
+
+# ----------------------------------------------------------------------------
 cmd_status() {
   PROFILE="${1:-}"; [[ -f "$PROFILE" ]] || die "usage: deckstrap status <profile.json>"
   PROFILE="$(readlink -f "$PROFILE")"; export PROFILE
@@ -163,6 +274,8 @@ cmd_doctor() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   apply)    cmd_apply "$@" ;;
+  gui)      cmd_gui "$@" ;;
+  modules)  cmd_modules "$@" ;;
   export)   python3 "$PROFILE_PY" export "$@" ;;
   validate) python3 "$PROFILE_PY" validate "$@" && ok "profile is valid" ;;
   status)   cmd_status "$@" ;;

@@ -79,12 +79,19 @@ preflight() {
   grep -qi steamos /etc/os-release 2>/dev/null || warn "This does not look like SteamOS. Continuing anyway."
   command -v python3 >/dev/null || die "python3 is required."
   curl -fsSL --max-time 10 https://github.com >/dev/null || die "No internet connection (cannot reach github.com)."
-  if passwd -S "$USER" 2>/dev/null | awk '{print $2}' | grep -q '^NP'; then
-    warn "No sudo password is set yet. Choose one now (you will be asked twice)."
-    passwd || die "Could not set password."
+  if [[ "${DECKSTRAP_GUI:-0}" == 1 ]]; then
+    # the GUI backend has already set/verified the password and provides it
+    # through SUDO_ASKPASS; there is no terminal to prompt on
+    info "Caching sudo credentials (GUI)..."
+    sudo -A -v || die "sudo failed (askpass)."
+  else
+    if passwd -S "$USER" 2>/dev/null | awk '{print $2}' | grep -q '^NP'; then
+      warn "No sudo password is set yet. Choose one now (you will be asked twice)."
+      passwd || die "Could not set password."
+    fi
+    info "Caching sudo credentials..."
+    sudo -v || die "sudo failed."
   fi
-  info "Caching sudo credentials..."
-  sudo -v || die "sudo failed."
   ( while true; do sudo -n true; sleep 50; kill -0 "$$" 2>/dev/null || exit; done ) &
   SUDO_KEEPALIVE=$!
   trap cleanup EXIT

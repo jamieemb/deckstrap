@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deckstrap</title>
+<style>
+  /* Designed for the Steam Deck screen: 1280 x 800, touch + trackpad, kiosk fullscreen. */
+  :root {
+    --bg: #0e1116; --panel: #161b24; --panel-2: #1d2430; --line: #2a3340;
+    --fg: #eef1f5; --muted: #98a2b3; --accent: #1a9fff; --accent-2: #0f6fd1;
+    --ok: #3ddc84; --bad: #ff5c5c; --warn: #ffc14d;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg);
+    font: 20px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; overflow: hidden; }
+  body { display: grid; grid-template-rows: 72px 1fr 92px; }
+  header { display: flex; align-items: center; gap: 18px; padding: 0 28px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header .brand { font-weight: 800; font-size: 26px; letter-spacing: .5px; }
+  header .profile { color: var(--muted); font-size: 18px; }
+  header .stages { margin-left: auto; display: flex; gap: 10px; }
+  .stage { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 16px; }
+  .stage.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .stage.done { border-color: var(--ok); color: var(--ok); }
+  main { overflow: auto; padding: 22px 28px; }
+  footer { display: flex; align-items: center; gap: 14px; padding: 0 28px; background: var(--panel); border-top: 1px solid var(--line); }
+  footer .spacer { flex: 1; }
+  .btn { min-height: 60px; padding: 0 30px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--fg); font: inherit; font-weight: 600; font-size: 20px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:active { background: var(--accent-2); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .screen { display: none; } .screen.active { display: block; }
+  h1 { font-size: 30px; margin: 0 0 6px; } h2 { font-size: 22px; margin: 22px 0 10px; }
+  p.lead { color: var(--muted); margin: 0 0 18px; font-size: 19px; }
+  .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 22px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat { background: var(--panel-2); border-radius: 12px; padding: 14px; text-align: center; }
+  .stat b { display: block; font-size: 34px; } .stat span { color: var(--muted); font-size: 16px; }
+  ul.plain { margin: 0; padding-left: 22px; } ul.plain li { margin: 6px 0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .mod { display: flex; align-items: center; gap: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px; min-height: 96px; cursor: pointer; user-select: none; }
+  .mod.on { border-color: var(--accent); background: #15233a; }
+  .mod .name { font-weight: 700; font-size: 20px; } .mod .desc { color: var(--muted); font-size: 16px; line-height: 1.3; }
+  .switch { flex: none; width: 58px; height: 34px; border-radius: 999px; background: #3a4453; position: relative; transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 4px; left: 4px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: left .15s; }
+  .mod.on .switch { background: var(--accent); } .mod.on .switch::after { left: 28px; }
+  .field { display: block; margin: 14px 0; }
+  .field label { display: block; color: var(--muted); font-size: 16px; margin-bottom: 6px; }
+  input[type=password], input[type=text] { width: 100%; min-height: 60px; font: inherit; font-size: 22px; padding: 0 16px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); }
+  .row { display: flex; gap: 14px; align-items: center; }
+  .error { color: var(--bad); min-height: 28px; margin-top: 8px; }
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; }
+  .step { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 18px; }
+  .dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--line); }
+  .step.running .dot { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+  .step.ok .dot { background: var(--ok); border-color: var(--ok); }
+  .step.fail .dot { background: var(--bad); border-color: var(--bad); }
+  .step.skipped .dot { background: var(--warn); border-color: var(--warn); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress { height: 14px; background: var(--panel-2); border-radius: 999px; overflow: hidden; margin: 10px 0 16px; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  pre.log { background: #090b0f; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; height: 250px; overflow: auto;
+    font: 14px/1.35 ui-monospace, "Cascadia Mono", Consolas, monospace; color: #c9d1d9; white-space: pre-wrap; margin: 0; }
+  .log-wrap.collapsed pre.log { height: 0; padding: 0 14px; border-width: 0; }
+  .toggle-log { background: none; border: none; color: var(--accent); font: inherit; font-size: 17px; cursor: pointer; padding: 6px 0; }
+  .big { font-size: 46px; font-weight: 800; margin: 6px 0; }
+  .ok-text { color: var(--ok); } .bad-text { color: var(--bad); }
+  .hint { color: var(--muted); font-size: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">deckstrap</div>
+  <div class="profile" id="profileName"></div>
+  <div class="stages">
+    <span class="stage active" data-stage="0">Welcome</span>
+    <span class="stage" data-stage="1">Choose</span>
+    <span class="stage" data-stage="2">Password</span>
+    <span class="stage" data-stage="3">Install</span>
+    <span class="stage" data-stage="4">Done</span>
+  </div>
+</header>
+
+<main>
+  <!-- 0 Welcome -->
+  <section class="screen active" id="s0">
+    <h1>Set up this Steam Deck</h1>
+    <p class="lead">Everything is installed fresh from the official sources. Your profile's settings are applied on top. Nothing is copied from an old install.</p>
+    <div class="hero">
+      <div class="card">
+        <h2 style="margin-top:0">What happens</h2>
+        <ul class="plain">
+          <li>Decky Loader, then every plugin in your profile from the Decky store, verified by checksum.</li>
+          <li>CSS Loader themes and sound packs from the deckthemes store, with your enabled themes and patch choices restored.</li>
+          <li>Firefox with your extensions, GE-Proton, CryoUtilities, SSH and the Desktop Mode tweaks you pick next.</li>
+          <li>Safe to run again later, for example after a SteamOS update removes Decky.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0">Profile</h2>
+        <div class="stats">
+          <div class="stat"><b id="stPlugins">0</b><span>plugins</span></div>
+          <div class="stat"><b id="stThemes">0</b><span>themes</span></div>
+          <div class="stat"><b id="stFlatpaks">0</b><span>apps</span></div>
+        </div>
+        <p class="hint" style="margin:14px 0 0">You will be asked for a sudo password. SteamOS has none by default, so you can choose one here.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 Choose -->
+  <section class="screen" id="s1">
+    <h1>Choose what to set up</h1>
+    <p class="lead">Ticked items come from your profile. Tap a card to toggle it.</p>
+    <div class="grid" id="modules"></div>
+  </section>
+
+  <!-- 2 Password -->
+  <section class="screen" id="s2">
+    <h1 id="pwTitle">Sudo password</h1>
+    <p class="lead" id="pwLead"></p>
+    <div class="card" style="max-width:640px">
+      <div class="field"><label for="pw1" id="pw1Label">Password</label><input type="password" id="pw1" autocomplete="off"></div>
+      <div class="field" id="pw2Field" hidden><label for="pw2">Repeat password</label><input type="password" id="pw2" autocomplete="off"></div>
+      <div class="row"><button class="btn" id="showPw" type="button">Show</button><span class="hint">Used only to install software on this Deck. It is never stored or sent anywhere.</span></div>
+      <div class="error" id="pwError"></div>
+    </div>
+  </section>
+
+  <!-- 3 Install -->
+  <section class="screen" id="s3">
+    <h1 id="runTitle">Installing</h1>
+    <div class="progress"><i id="bar"></i></div>
+    <div class="steps" id="steps"></div>
+    <div class="log-wrap collapsed" id="logWrap">
+      <button class="toggle-log" id="toggleLog" type="button">Show log</button>
+      <pre class="log" id="log"></pre>
+    </div>
+  </section>
+
+  <!-- 4 Done -->
+  <section class="screen" id="s4">
+    <h1>Finished</h1>
+    <div class="big" id="doneBig"></div>
+    <p class="lead" id="doneSummary"></p>
+    <div class="hero">
+      <div class="card"><h2 style="margin-top:0">Next, by hand</h2><ul class="plain" id="notes"></ul></div>
+      <div class="card"><h2 style="margin-top:0">Log</h2><p class="hint">The full log is saved as <code>~/deckstrap.log</code>. Re-run the installer any time; finished steps are skipped or redone cleanly.</p>
+        <button class="toggle-log" id="toggleLog2" type="button">Show log here</button><pre class="log" id="log2" hidden></pre></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span class="hint" id="footHint"></span>
+  <span class="spacer"></span>
+  <button class="btn" id="back" type="button" hidden>Back</button>
+  <button class="btn primary" id="next" type="button">Start</button>
+  <button class="btn" id="gamemode" type="button" hidden>Return to Gaming Mode</button>
+  <button class="btn" id="quit" type="button" hidden>Close</button>
+</footer>
+
+<script>
+(() => {
+  const token = new URLSearchParams(location.search).get("t") || "";
+  const $ = (id) => document.getElementById(id);
+  const api = async (path, body) => {
+    const r = await fetch(path, { method: body ? "POST" : "GET", headers: { "X-Deckstrap-Token": token, "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined });
+    return r.json();
+  };
+
+  let state = null, stage = 0, selected = new Set(), logNext = 0, logLines = [], poller = null;
+
+  function show(n) {
+    stage = n;
+    document.querySelectorAll(".screen").forEach((s, i) => s.classList.toggle("active", i === n));
+    document.querySelectorAll(".stage").forEach((s, i) => { s.classList.toggle("active", i === n); s.classList.toggle("done", i < n); });
+    $("back").hidden = !(n === 1 || n === 2);
+    $("next").hidden = n >= 3;
+    $("gamemode").hidden = n !== 4; $("quit").hidden = n !== 4;
+    $("next").textContent = n === 0 ? "Start" : n === 1 ? "Continue" : "Install";
+    $("footHint").textContent = n === 1 ? `${selected.size} selected` : n === 3 ? "This can take a while. Keep the Deck plugged in." : "";
+  }
+
+  function renderModules() {
+    const g = $("modules"); g.innerHTML = "";
+    for (const m of state.modules) {
+      const d = document.createElement("div");
+      d.className = "mod" + (selected.has(m.name) ? " on" : "");
+      d.innerHTML = `<div class="switch"></div><div><div class="name">${m.name.replace(/_/g, " ")}</div><div class="desc">${m.desc}</div></div>`;
+      d.onclick = () => { selected.has(m.name) ? selected.delete(m.name) : selected.add(m.name); renderModules(); $("footHint").textContent = `${selected.size} selected`; };
+      g.appendChild(d);
+    }
+  }
+
+  function setupPassword() {
+    const set = state.sudo.password_set;
+    $("pwTitle").textContent = set ? "Enter your sudo password" : "Choose a sudo password";
+    $("pwLead").textContent = set ? "The password you use for Desktop Mode administration."
+      : "SteamOS has no password yet. Pick one now; you will need it for future installs too.";
+    $("pw1Label").textContent = set ? "Password" : "New password";
+    $("pw2Field").hidden = set;
+    $("pwError").textContent = "";
+    setTimeout(() => $("pw1").focus(), 50);
+  }
+
+  async function submitPassword() {
+    const set = state.sudo.password_set, pw = $("pw1").value, pw2 = $("pw2").value;
+    if (!pw) { $("pwError").textContent = "Enter a password."; return false; }
+    if (!set && pw !== pw2) { $("pwError").textContent = "The passwords do not match."; return false; }
+    $("next").disabled = true; $("pwError").textContent = "Checking…";
+    const r = await api("/api/sudo", { password: pw, mode: set ? "verify" : "set" });
+    $("next").disabled = false;
+    if (!r.ok) { $("pwError").textContent = r.error || "That did not work."; return false; }
+    $("pwError").textContent = ""; $("pw1").value = ""; $("pw2").value = "";
+    return true;
+  }
+
+  function renderRun() {
+    const run = state.run, steps = run.steps;
+    const total = Math.max(steps.length, selected.size);
+    const finished = steps.filter(s => s.status !== "running").length;
+    $("bar").style.width = (run.running ? Math.min(95, 100 * finished / Math.max(total, 1)) : 100) + "%";
+    const box = $("steps"); box.innerHTML = "";
+    for (const s of steps) {
+      const d = document.createElement("div"); d.className = "step " + s.status;
+      d.innerHTML = `<span class="dot"></span><span>${s.name}</span>`; box.appendChild(d);
+    }
+    if (steps.length) $("runTitle").textContent = run.running ? `Installing: ${steps[steps.length - 1].name}` : "Install finished";
+    const pre = $("log"); pre.textContent = logLines.join("\n"); pre.scrollTop = pre.scrollHeight;
+  }
+
+  function renderDone() {
+    const run = state.run, failed = run.steps.filter(s => s.status === "fail");
+    $("doneBig").textContent = failed.length ? "Some steps failed" : "All done";
+    $("doneBig").className = "big " + (failed.length ? "bad-text" : "ok-text");
+    $("doneSummary").textContent = run.summary + (failed.length ? ". Failed: " + failed.map(s => s.name).join(", ") + ". Check the log and run again." : ".");
+    const n = $("notes"); n.innerHTML = "";
+    for (const t of run.notes) { const li = document.createElement("li"); li.textContent = t; n.appendChild(li); }
+    if (!run.notes.length) n.innerHTML = "<li>Nothing. Return to Gaming Mode and enjoy.</li>";
+    $("log2").textContent = logLines.join("\n");
+  }
+
+  async function poll() {
+    state = await api(`/api/state?since=${logNext}`);
+    logLines.push(...state.log); logNext = state.log_next;
+    if (stage === 3) {
+      renderRun();
+      if (!state.run.running && state.run.finished) { clearInterval(poller); poller = null; renderDone(); show(4); }
+    }
+  }
+
+  $("next").onclick = async () => {
+    if (stage === 0) { show(1); renderModules(); return; }
+    if (stage === 1) { if (!selected.size) return; setupPassword(); show(2); return; }
+    if (stage === 2) {
+      if (!(await submitPassword())) return;
+      const dry = new URLSearchParams(location.search).get("dry") === "1";
+      const r = await api("/api/start", { only: [...selected], dry_run: dry });
+      if (!r.ok) { $("pwError").textContent = r.error || "Could not start."; return; }
+      show(3); renderRun(); poller = setInterval(poll, 700);
+    }
+  };
+  $("back").onclick = () => show(stage - 1);
+  $("showPw").onclick = () => { const t = $("pw1").type === "password" ? "text" : "password"; $("pw1").type = t; $("pw2").type = t; $("showPw").textContent = t === "text" ? "Hide" : "Show"; };
+  $("pw2").onkeydown = $("pw1").onkeydown = (e) => { if (e.key === "Enter") $("next").click(); };
+  $("toggleLog").onclick = () => { const w = $("logWrap"); w.classList.toggle("collapsed"); $("toggleLog").textContent = w.classList.contains("collapsed") ? "Show log" : "Hide log"; };
+  $("toggleLog2").onclick = () => { const l = $("log2"); l.hidden = !l.hidden; $("toggleLog2").textContent = l.hidden ? "Show log here" : "Hide log"; };
+  $("gamemode").onclick = () => api("/api/gamemode", {});
+  $("quit").onclick = async () => { await api("/api/quit", {}); document.body.innerHTML = "<main style='padding:40px'><h1>You can close this window.</h1></main>"; };
+
+  (async () => {
+    await poll();
+    $("profileName").textContent = state.profile.name;
+    $("stPlugins").textContent = state.profile.plugins; $("stThemes").textContent = state.profile.themes; $("stFlatpaks").textContent = state.profile.flatpaks;
+    selected = new Set(state.modules.filter(m => m.wanted).map(m => m.name));
+  })();
+})();
+</script>
+</body>
+</html>

@@ -11,24 +11,43 @@ Nothing from an old install is copied as code. A profile is a single JSON
 file of names, store ids and settings, so it is small, readable and shareable.
 
 **Users:** go to the website, download the installer, double-click it in
-Desktop Mode. See [docs/index.html](docs/index.html).
+Desktop Mode. A full-screen installer opens, sized for the Deck's display.
+See [docs/index.html](docs/index.html).
 
 **Rebuilding your own Deck:** export a profile once, build a bundle that
 carries it, keep the bundle on a USB stick.
 
+## The installer UI
+
+`deckstrap gui profile.json` starts a small local backend (`lib/server.py`,
+Python standard library only) that serves `ui/index.html` and runs
+`deckstrap apply` on request, streaming progress. The page opens in Firefox
+kiosk mode, full screen, with a private pre-configured profile; if Firefox is
+not installed yet it is fetched from Flathub first behind a progress dialog.
+Screens: welcome, choose modules, sudo password (set or enter), live progress
+with step list and log, finished with next steps and a Return to Gaming Mode
+button. The backend binds to 127.0.0.1 on a random port and requires a random
+token on every call. The sudo password is passed to the apply process only
+through its environment and a `SUDO_ASKPASS` helper; it is never written to
+disk or logged. Without a display, or if Firefox cannot be installed, it falls
+back to the zenity checklist or a terminal prompt.
+
 ## Commands
 
 ```
+deckstrap gui profile.json [--assets DIR] [--dry-run]
 deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--wizard] [--assets DIR]
 deckstrap export [--from ~/homebrew] [--name NAME] [--redact] [--out profile.json]
 deckstrap status profile.json      # what the Deck has vs what the profile wants
+deckstrap modules profile.json     # name / wanted / description, for tooling
 deckstrap list | doctor | validate profile.json | version
 ```
 
-`./build.sh --profile P --assets DIR --out deckstrap.sh` packs the tool, the
-profile and the assets folder into one self-extracting script. Run it on the
-Deck with `bash deckstrap.sh`; it accepts the same options as `apply`, plus
-`status`, `list` and `doctor`.
+`./build.sh --profile P --assets DIR --out deckstrap.sh [--mode gui|wizard|apply]`
+packs the tool, the profile and the assets folder into one self-extracting
+script. Run it on the Deck with `bash deckstrap.sh`: in gui mode (the default)
+it opens the installer; `bash deckstrap.sh apply` runs unattended and `wizard`
+shows the checklist dialog. `status`, `list` and `doctor` work too.
 
 ## Profile
 
