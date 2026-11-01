@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deckstrap</title>
+<meta name="description" content="Set up a Steam Deck from a profile: Decky Loader, plugins, themes, Firefox and more, fresh every time.">
+<style>
+  :root { --bg:#0f1115; --fg:#e8e8ea; --muted:#9aa0a6; --accent:#1a9fff; --card:#171a21; --line:#2a2e37; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 2.4rem; margin: 0 0 .25rem; }
+  .tag { color: var(--muted); margin: 0 0 2rem; }
+  .btn { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; font-weight:600; padding:16px 28px; border-radius:10px; font-size:1.15rem; }
+  .btn.alt { background:transparent; border:1px solid var(--line); color:var(--fg); font-weight:500; margin-left:8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin:20px 0; }
+  ol li, ul li { margin: .4rem 0; }
+  code { background:#0b0d11; border:1px solid var(--line); padding:2px 6px; border-radius:6px; font-size:.95em; }
+  pre { background:#0b0d11; border:1px solid var(--line); padding:12px 14px; border-radius:8px; overflow:auto; }
+  h2 { font-size:1.25rem; margin: 2rem 0 .5rem; }
+  .muted { color: var(--muted); }
+  footer { color: var(--muted); font-size:.9rem; margin-top:3rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>deckstrap</h1>
+  <p class="tag">Set up a Steam Deck from a profile. Fresh installs of Decky Loader, its plugins, CSS themes and sound packs, Firefox with your extensions, GE-Proton, CryoUtilities and more, with your settings applied on top. One file, one click.</p>
+
+  <p>
+    <a class="btn" href="deckstrap.desktop" download>Download installer</a>
+    <a class="btn alt" href="https://github.com/jamieemb/deckstrap/releases/latest/download/deckstrap.sh">Bundle (.sh) for USB / offline</a>
+  </p>
+
+  <div class="card">
+    <h2 style="margin-top:0">How to run it</h2>
+    <ol>
+      <li>On the Deck, hold the power button and choose <strong>Switch to Desktop</strong>.</li>
+      <li>Open this page in the browser and click <strong>Download installer</strong>.</li>
+      <li>Open the Downloads folder and double-click <code>deckstrap.desktop</code>. KDE asks whether to trust the file: choose <strong>Continue</strong>.</li>
+      <li>A terminal opens, downloads the latest bundle and shows a checklist of what to set up. Tick what you want, press OK, and enter a sudo password when asked (SteamOS has none by default, so you will be asked to choose one).</li>
+      <li>Wait for it to finish, then return to Gaming Mode.</li>
+    </ol>
+    <p class="muted">Prefer a terminal? In Konsole: <code>curl -fsSL https://raw.githubusercontent.com/jamieemb/deckstrap/main/install.sh | bash</code></p>
+  </div>
+
+  <h2>What it sets up</h2>
+  <ul>
+    <li><strong>Decky Loader</strong>, with plugins installed fresh from the Decky store (checksum verified) in your saved order, and each plugin's settings applied.</li>
+    <li><strong>CSS Loader themes</strong> and <strong>Audio Loader packs</strong> fresh from the deckthemes store, with your enabled themes, patch choices and profiles restored.</li>
+    <li><strong>Firefox</strong> from Flathub with extensions force-installed by policy (uBlock Origin by default), set as default browser.</li>
+    <li><strong>GE-Proton</strong>, <strong>CryoUtilities</strong> recommended settings, daily Flatpak updates, SSH, Desktop Mode tweaks, optional Distrobox and EmuDeck.</li>
+  </ul>
+
+  <h2>Your own profile</h2>
+  <p>A profile is one JSON file. Export yours from a Deck that is already set up the way you like, keep it anywhere, and build a bundle that carries it:</p>
+<pre>deckstrap export --name "My Deck" --out profile.json
+./build.sh --profile profile.json --assets ./my-assets --out deckstrap.sh</pre>
+  <p>Copy that one file to a USB stick and <code>bash deckstrap.sh</code> on the next clean install. Nothing from the old install is copied as code; the profile only records what to fetch and how to configure it.</p>
+
+  <h2>Safe to re-run</h2>
+  <p>Every step is idempotent. Run it again after a SteamOS update to get Decky back. Use <code>bash deckstrap.sh --dry-run</code> to see what would happen, and <code>bash deckstrap.sh status</code> to compare the Deck with the profile.</p>
+
+  <footer>
+    <a href="https://github.com/jamieemb/deckstrap" style="color:var(--fg)">Source on GitHub</a>. MIT licensed. Not affiliated with Valve, Decky or any plugin or theme author.
+  </footer>
+</main>
+</body>
+</html>

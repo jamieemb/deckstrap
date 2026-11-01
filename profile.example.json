@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "name": "Example Deck",
+  "home": { "restore": true },
+  "system": { "ssh": true, "ssh_authorized_key": "", "hostname": "", "timezone": "" },
+  "flatpaks": [
+    "org.mozilla.firefox",
+    "net.davidotek.pupgui2",
+    "com.github.tchx84.Flatseal"
+  ],
+  "firefox": {
+    "enabled": true,
+    "default_browser": true,
+    "homepage": "",
+    "disable_telemetry": true,
+    "extensions": [
+      { "id": "uBlock0@raymondhill.net", "url": "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi" }
+    ]
+  },
+  "decky": {
+    "enabled": true,
+    "branch": "stable",
+    "fresh_themes": true,
+    "plugins": [
+      "CSS Loader",
+      "SteamGridDB",
+      "ProtonDB Badges",
+      "Animation Changer",
+      "Bluetooth",
+      "HLTB for Deck"
+    ],
+    "settings": {
+      "loader.json": { "branch": 0, "store": 0, "pluginOrder": ["CSS Loader", "SteamGridDB", "ProtonDB Badges", "Animation Changer", "Bluetooth", "HLTB for Deck"] },
+      "decky-steamgriddb/steamgriddb.json": { "squares": false, "motd_hidden_global": true, "uniform_featured": true, "capsule_glow_amount": 100 }
+    },
+    "themes": [
+      { "name": "Centered Home", "id": "865407ae-fb14-4db7-b123-61f6995ed757", "version": "v1.3",
+        "config": { "active": true, "Hide Header": "Yes, center on games", "Force Header to Stay Visible": "No", "Expand When Docked": "Yes", "Show Footer Categories": "No" } },
+      { "name": "Better Blur", "id": "6ad1eed7-99a9-47e2-8184-f5d826e42d54", "version": "", "config": { "active": true } }
+    ],
+    "profiles": [],
+    "css_store": "unpinnedThemes:[]\nenableNavPatch:true",
+    "sounds": {
+      "packs": [ { "name": "Switch 2 Sounds", "id": "12b04b34-00c1-4600-8e71-eb0a77f47962", "version": "v2.1" } ],
+      "config": { "selected_pack": "Switch 2 Sounds", "selected_music": "None", "sound_volume": 1, "music_volume": 0.5, "legacy_enabled": false }
+    }
+  },
+  "ge_proton": true,
+  "cryoutilities": { "install": true, "recommended": true },
+  "flatpak_auto_update": true,
+  "desktop": { "dark_theme": false, "disable_screenlock": true, "shell_extras": true, "git": { "name": "", "email": "" } },
+  "distrobox": { "container": "", "image": "docker.io/library/archlinux:latest", "packages": ["git", "neovim", "htop", "ripgrep"], "export": ["nvim", "htop", "rg"] },
+  "pacman": false,
+  "emudeck": { "install": false, "emulation_dir": "", "bios": true },
+  "os_update_check": true
+}

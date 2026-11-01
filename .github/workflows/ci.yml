@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck
+      - name: Run tests
+        run: bash tests/run.sh
+      - name: Build bundle (example profile)
+        run: ./build.sh && ls -la dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deckstrap-bundle
+          path: dist/deckstrap.sh

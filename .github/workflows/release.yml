@@ -1,0 +1,24 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: bash tests/run.sh
+      - name: Build bundle
+        run: ./build.sh
+      - name: Checksum
+        run: cd dist && sha256sum deckstrap.sh > deckstrap.sh.sha256
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/deckstrap.sh
+            dist/deckstrap.sh.sha256
+          generate_release_notes: true

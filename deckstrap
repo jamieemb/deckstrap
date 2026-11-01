@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  deckstrap - set up a Steam Deck from a profile, fresh, every time
+#
+#    deckstrap apply profile.json [--only a,b] [--skip a,b] [--dry-run] [--assets DIR]
+#    deckstrap export [--from ~/homebrew] [--name NAME] [--redact] [--out profile.json]
+#    deckstrap status profile.json
+#    deckstrap list | doctor | validate profile.json | version
+#
+#  Run from Desktop Mode as the normal "deck" user (never with sudo).
+# =============================================================================
+set -uo pipefail
+
+DECKSTRAP_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=lib/core.sh
+source "$DECKSTRAP_DIR/lib/core.sh"
+
+usage() {
+  sed -n '3,10p' "${BASH_SOURCE[0]}" | sed -E 's/^# ?//; s/^ {0,2}//'
+  echo
+  echo "Modules (enable them in the profile):"
+  load_modules
+  local m
+  for m in "${MODULES[@]}"; do printf '  %-18s %s\n' "$m" "${MOD_DESCS[$m]}"; done
+}
+
+# ----------------------------------------------------------------------------
+cmd_apply() {
+  PROFILE=""; ONLY=""; SKIP=""; DRY_RUN=0; ASSETS=""; WIZARD=0
+  while (($#)); do
+    case "$1" in
+      --only)    ONLY="$2"; shift 2 ;;
+      --skip)    SKIP="$2"; shift 2 ;;
+      --assets)  ASSETS="$2"; shift 2 ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --wizard)  WIZARD=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      -*)        die "unknown option: $1" ;;
+      *)         PROFILE="$1"; shift ;;
+    esac
+  done
+  [[ -n "$PROFILE" ]] || die "usage: deckstrap apply <profile.json> [options]"
+  [[ -f "$PROFILE" ]] || die "profile not found: $PROFILE"
+  PROFILE="$(readlink -f "$PROFILE")"
+  python3 "$PROFILE_PY" validate "$PROFILE" || die "profile failed validation"
+  if [[ -z "$ASSETS" ]]; then
+    ASSETS="$(dirname "$PROFILE")"
+    [[ -d "$ASSETS/assets" ]] && ASSETS="$ASSETS/assets"
+  fi
+  export PROFILE ASSETS DRY_RUN
+
+  if (( WIZARD )); then
+    load_modules
+    ONLY="$(wizard_pick_modules)" || die "cancelled"
+    [[ -n "$ONLY" ]] || die "no modules selected"
+  fi
+
+  LOG="$HOME/deckstrap.log"
+  exec > >(tee -a "$LOG") 2>&1
+  echo "============================================================"
+  echo " deckstrap $DECKSTRAP_VERSION  -  $(date)"
+  echo " profile: $PROFILE ($(pget name 'unnamed'))"
+  echo " assets:  $ASSETS"
+  echo " log:     $LOG"
+  (( DRY_RUN )) && echo " DRY RUN: nothing will be changed"
+  echo "============================================================"
+
+  load_modules
+  (( DRY_RUN )) || preflight
+
+  local m
+  for m in "${MODULES[@]}"; do
+    if [[ -n "$ONLY" ]] && ! list_has "$ONLY" "$m"; then continue; fi
+    if [[ -n "$SKIP" ]] && list_has "$SKIP" "$m"; then info "skipping $m (--skip)"; continue; fi
+    if ! "mod_${m}_wanted"; then echo "${C_DIM}-- $m: not enabled in profile${C_RST}"; continue; fi
+    "mod_${m}_apply"
+  done
+
+  echo
+  echo "============================================================"
+  if (( ${#FAILED_STEPS[@]} == 0 )); then
+    ok "All steps completed (${#DONE_STEPS[@]} done, ${#SKIPPED_STEPS[@]} skipped)."
+  else
+    err "Steps with errors: ${FAILED_STEPS[*]}"
+    echo "   See $LOG. Re-running is safe; finished steps are skipped or redone cleanly."
+  fi
+  load_modules
+  local notes=()
+  for m in "${MODULES[@]}"; do
+    if "mod_${m}_wanted" && declare -F "mod_${m}_notes" >/dev/null; then
+      mapfile -t -O "${#notes[@]}" notes < <("mod_${m}_notes")
+    fi
+  done
+  if (( ${#notes[@]} )); then
+    echo; echo "Next, by hand:"
+    printf '  * %s\n' "${notes[@]}"
+  fi
+  echo "============================================================"
+  (( ${#FAILED_STEPS[@]} == 0 ))
+}
+
+# Let the user tick the modules to run. zenity (ships with SteamOS) when a
+# display is available, otherwise a yes/no prompt per module. Prints "a,b,c".
+wizard_pick_modules() {
+  local m picked=()
+  if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command -v zenity >/dev/null; then
+    local rows=()
+    for m in "${MODULES[@]}"; do
+      local on=FALSE; "mod_${m}_wanted" && on=TRUE
+      rows+=("$on" "$m" "${MOD_DESCS[$m]}")
+    done
+    zenity --list --checklist --width=760 --height=520 \
+      --title="deckstrap: $(pget name 'profile')" \
+      --text="Tick what to set up on this Deck. Everything is installed fresh; your profile's settings are applied on top." \
+      --column="Run" --column="Module" --column="What it does" --separator="," \
+      --print-column=2 "${rows[@]}"
+    return $?
+  fi
+  for m in "${MODULES[@]}"; do
+    local def="n"; "mod_${m}_wanted" && def="y"
+    read -r -p "$m - ${MOD_DESCS[$m]} [${def}]: " ans </dev/tty
+    ans="${ans:-$def}"
+    [[ "$ans" =~ ^[Yy] ]] && picked+=("$m")
+  done
+  local IFS=','; echo "${picked[*]}"
+}
+
+# ----------------------------------------------------------------------------
+cmd_status() {
+  PROFILE="${1:-}"; [[ -f "$PROFILE" ]] || die "usage: deckstrap status <profile.json>"
+  PROFILE="$(readlink -f "$PROFILE")"; export PROFILE
+  ASSETS="$(dirname "$PROFILE")"; export ASSETS
+  load_modules
+  local m
+  printf '%-18s %-10s %s\n' "MODULE" "WANTED" "STATUS"
+  for m in "${MODULES[@]}"; do
+    local wanted="no" status="-"
+    "mod_${m}_wanted" && wanted="yes"
+    if declare -F "mod_${m}_check" >/dev/null; then
+      status="$("mod_${m}_check" 2>/dev/null)" || status="${status:-missing}"
+    fi
+    printf '%-18s %-10s %s\n' "$m" "$wanted" "$status"
+  done
+}
+
+# ----------------------------------------------------------------------------
+cmd_doctor() {
+  local rc=0
+  chk() { if "$@" >/dev/null 2>&1; then ok "$*"; else err "$*"; rc=1; fi; }
+  grep -qi steamos /etc/os-release 2>/dev/null && ok "SteamOS detected" || warn "not SteamOS ($(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}"))"
+  chk command -v python3
+  chk command -v curl
+  chk command -v flatpak
+  chk command -v rsync
+  chk command -v systemctl
+  if [[ $EUID -eq 0 ]]; then err "running as root; run as the deck user"; rc=1; else ok "not root"; fi
+  if passwd -S "$USER" 2>/dev/null | awk '{print $2}' | grep -q '^NP'; then warn "no sudo password set yet (apply will prompt)"; else ok "sudo password set"; fi
+  curl -fsSL --max-time 10 https://github.com >/dev/null 2>&1 && ok "internet reachable" || { err "no internet"; rc=1; }
+  return $rc
+}
+
+# ----------------------------------------------------------------------------
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  apply)    cmd_apply "$@" ;;
+  export)   python3 "$PROFILE_PY" export "$@" ;;
+  validate) python3 "$PROFILE_PY" validate "$@" && ok "profile is valid" ;;
+  status)   cmd_status "$@" ;;
+  list)     usage ;;
+  doctor)   cmd_doctor ;;
+  version)  echo "deckstrap $DECKSTRAP_VERSION" ;;
+  help|-h|--help) usage ;;
+  *) die "unknown command: $cmd (try: deckstrap help)" ;;
+esac
