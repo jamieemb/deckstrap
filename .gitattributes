@@ -5,3 +5,7 @@
 deckstrap text eol=lf
 tests/fixtures/** text eol=lf
 docs/deckstrap.sh binary
+*.tar.gz binary
+*.tgz binary
+*.zip binary
+docs/profiles/** binary

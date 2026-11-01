@@ -125,6 +125,19 @@ grep -q 'ui/index.html' "$T/bundle.list" && pass "bundle carries the ui" || bad 
 shopt -s nullglob; leftovers=(/tmp/deckstrap.* "${TMPDIR:-/tmp}"/deckstrap.*); shopt -u nullglob
 (( ${#leftovers[@]} )) && bad "bundle left temp dirs: ${leftovers[*]}" || pass "bundle cleans up"
 
+echo "== published site artifacts (binary files must survive git and line-ending tools)"
+if [[ -f docs/deckstrap.sh ]]; then
+  spl="$(grep -a -n -m1 '^__PAYLOAD_BEGINS__$' docs/deckstrap.sh | cut -d: -f1)"
+  n="$(tail -n +"$((spl + 1))" docs/deckstrap.sh | tar -tzf - 2>/dev/null | wc -l)"
+  (( n > 10 )) && pass "docs/deckstrap.sh payload unpacks ($n files)" || bad "docs/deckstrap.sh payload is damaged ($n files)"
+fi
+shopt -s nullglob
+for pk in docs/profiles/*.tar.gz; do
+  n="$(tar -tzf - < "$pk" 2>/dev/null | wc -l)"
+  (( n > 0 )) && grep -q '^profile.json$' <(tar -tzf - < "$pk" 2>/dev/null) && pass "$pk unpacks ($n entries)" || bad "$pk is damaged or has no profile.json"
+done
+shopt -u nullglob
+
 rm -rf "$T"
 echo
 if (( fail )); then echo "TESTS FAILED"; exit 1; else echo "ALL TESTS PASSED"; fi
