@@ -105,7 +105,9 @@ async function createWindow() {
   win.on('closed', () => { stopBackend(); app.quit(); });
   await win.loadURL(url);
   if (opts.smoke) {
-    const name = await win.webContents.executeJavaScript('new Promise(r => setTimeout(() => r(document.getElementById("profileName").textContent), 1500))');
+    // wait for the page to show a profile name (a --profile-url pack takes a few seconds to fetch)
+    const name = await win.webContents.executeJavaScript(`new Promise(r => { const t0 = Date.now(); const tick = () => {
+      const n = document.getElementById("profileName").textContent; if (n || Date.now() - t0 > 30000) r(n); else setTimeout(tick, 500); }; tick(); })`);
     console.log(`smoke ok: title="${win.getTitle()}" profile="${name}" electron=${process.versions.electron}`);
     win.close();
   }
