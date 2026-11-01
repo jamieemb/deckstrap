@@ -13,7 +13,7 @@ jobs:
       - name: Run tests
         run: bash tests/run.sh
       - name: Build bundle (example profile)
-        run: ./build.sh && ls -la dist/
+        run: bash build.sh && ls -la dist/
       - uses: actions/upload-artifact@v4
         with:
           name: deckstrap-bundle

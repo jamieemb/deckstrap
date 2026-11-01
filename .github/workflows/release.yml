@@ -12,7 +12,7 @@ jobs:
       - name: Test
         run: bash tests/run.sh
       - name: Build bundle
-        run: ./build.sh
+        run: bash build.sh
       - name: Checksum
         run: cd dist && sha256sum deckstrap.sh > deckstrap.sh.sha256
       - name: Publish release
