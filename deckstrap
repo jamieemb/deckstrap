@@ -234,10 +234,12 @@ gui_ensure_firefox() {
   flatpak_installed org.mozilla.firefox
 }
 
-# gui_open_firefox <url>: a normal (not fullscreen) window the size of the Deck
-# screen, with the browser toolbars hidden by userChrome.css in a private
-# profile. A fullscreen/kiosk window would sit above Steam's on-screen
-# keyboard and above any dialog another program opens, so it must not be used.
+# gui_open_firefox <url>: Firefox in kiosk mode (true fullscreen app window)
+# with a private, pre-configured profile. Kiosk covers Steam's on-screen
+# keyboard and any dialog another program opens, so the page carries its own
+# keyboard and every step is non-interactive (sudo via askpass, no installer
+# scripts that pop dialogs). A plain window was tried and looked wrong on the
+# Deck; the toolbar-hiding stylesheet is kept as a fallback for non-kiosk use.
 gui_open_firefox() {
   local prof="$HOME/.var/app/org.mozilla.firefox/deckstrap-ui"
   mkdir -p "$prof/chrome"
@@ -256,8 +258,7 @@ PREFS
   cat > "$prof/chrome/userChrome.css" <<'CSS'
 #TabsToolbar, #nav-bar, #PersonalToolbar { visibility: collapse !important; }
 CSS
-  flatpak run org.mozilla.firefox --new-instance --no-remote --profile "$prof" \
-    --width 1280 --height 800 "$1" >/dev/null 2>&1
+  flatpak run org.mozilla.firefox --kiosk --new-instance --no-remote --profile "$prof" "$1" >/dev/null 2>&1
 }
 
 # ----------------------------------------------------------------------------

@@ -36,9 +36,17 @@ _cryo_install() {
   fi
   [[ -x "$bin" ]] || { err "CryoUtilities binary not found at $bin"; return 1; }
   if pbool cryoutilities.recommended true; then
-    info "applying recommended settings (swap, swappiness, HugePages...)"
-    # CryoUtilities keeps its log under $HOME; sudo would reset HOME to /root
+    info "applying recommended settings (swap, swappiness, HugePages...); this resizes the swap file and can take a few minutes"
+    # CryoUtilities resolves its folder from $HOME (os.UserHomeDir) and logs
+    # only to ~/.cryo_utilities/cryoutilities.log. Plain sudo sets HOME=/root
+    # (it then panics) and --preserve-env is refused by some sudoers policies,
+    # so set HOME explicitly via env. On failure, surface its own log.
     mkdir -p "$HOME/.cryo_utilities"
-    sudo --preserve-env=HOME "$bin" recommended || return 1
+    if ! sudo env HOME="$HOME" "$bin" recommended; then
+      err "CryoUtilities 'recommended' exited with an error; its log says:"
+      tail -n 15 "$HOME/.cryo_utilities/cryoutilities.log" 2>/dev/null | sed 's/^/    /'
+      return 1
+    fi
+    info "CryoUtilities log tail:"; tail -n 4 "$HOME/.cryo_utilities/cryoutilities.log" 2>/dev/null | sed 's/^/    /'
   fi
 }
