@@ -67,6 +67,16 @@ Themes or packs with no store id are listed under `themes_local` and can only
 be restored from `assets/themes/<name>`. `--redact` blanks values whose key
 looks like an API key or token and lists them so a profile can be shared.
 
+**Exactness.** The export records each theme's and pack's version.
+`decky.fresh_themes` controls what `apply` does with that: `"match"` (the
+default) fetches from the store only when the store still has the recorded
+version and otherwise uses the exact backed-up folder from
+`assets/themes/<name>` or `assets/sounds/<name>`; `true` always fetches the
+newest; `false` always uses the backup. Point `build.sh --assets` at a folder
+that holds `homebrew/themes` and `homebrew/sounds` (a deck-backup checkout)
+and the bundle carries those copies, so a rebuilt Deck matches the backup
+even after a theme is updated upstream.
+
 Assets are optional files the profile cannot describe: `assets/home` (dotfiles
 rsynced over `$HOME`), `assets/bios` (EmuDeck BIOS files), `assets/themes` and
 `assets/sounds` (local-only items). `apply` looks for `assets/` next to the

@@ -49,7 +49,7 @@ DEFAULTS = {
     "decky": {
         "enabled": True,
         "branch": "stable",
-        "fresh_themes": True,
+        "fresh_themes": "match",
         "plugins": [],
         "settings": {},
         "themes": [],

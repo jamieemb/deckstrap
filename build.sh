@@ -58,8 +58,14 @@ ASSET_LIST=""
 if [[ -n "$ASSETS" ]]; then
   [[ -d "$ASSETS" ]] || { echo "assets folder not found: $ASSETS" >&2; exit 1; }
   for sub in bios home themes sounds downloads; do
-    [[ -d "$ASSETS/$sub" ]] && { cp -r "$ASSETS/$sub" "$STAGE/assets/"; ASSET_LIST+="$sub "; }
+    src="$ASSETS/$sub"
+    # a deck-backup style folder keeps themes/sounds under homebrew/; accept that layout too
+    [[ -d "$src" ]] || { [[ -d "$ASSETS/homebrew/$sub" ]] && src="$ASSETS/homebrew/$sub"; }
+    if [[ -d "$src" ]]; then
+      cp -r "$src" "$STAGE/assets/$sub"; ASSET_LIST+="$sub "
+    fi
   done
+  rm -f "$STAGE/assets/themes/css_translations.json"   # CSS Loader cache, not state
 fi
 
 TMP="$(mktemp)"

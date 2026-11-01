@@ -165,6 +165,11 @@ decky_plugin_install() {   # decky_plugin_install <store-name> <plugins-dir>; pr
 
 # deckthemes store (CSS Loader themes and Audio Loader packs): the API gives
 # the zip blob id for a theme id; the zip unpacks to one folder.
+deckthemes_version() {   # deckthemes_version <id> -> prints the store's current version string
+  curl -fsSL --max-time 30 "https://api.deckthemes.com/themes/$1" \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null
+}
+
 deckthemes_install() {   # deckthemes_install <id> <folder-name> <dest-dir>
   local id="$1" name="$2" dst="$3" tmp blob top
   blob="$(curl -fsSL "https://api.deckthemes.com/themes/$id" \

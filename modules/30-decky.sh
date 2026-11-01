@@ -78,24 +78,57 @@ _decky_settings() {
   info "wrote $n settings/state files from the profile"
 }
 
+# How a theme or sound pack folder is obtained (profile key decky.fresh_themes):
+#   "match" (default) fetch it from the store only when the store's version is
+#                     the one recorded in the profile; otherwise use the exact
+#                     backed-up copy from assets/<kind>/<name>, so the result is
+#                     identical to the backup
+#   true              always fetch the newest from the store
+#   false             always use the backed-up copy (store only if none exists)
+# Prints "fresh" or "copied"; returns 1 when neither source worked.
+_decky_fetch() {   # _decky_fetch <themes|sounds> <id> <name> <recorded-version>
+  local kind="$1" id="$2" name="$3" ver="$4" dst="$HOME/homebrew/$kind"
+  local policy have_copy=0 want_fresh=1 sv meta="theme.json"
+  [[ "$kind" == sounds ]] && meta="pack.json"
+  policy="$(pget decky.fresh_themes match)"
+  [[ -d "$ASSETS/$kind/$name" ]] && have_copy=1
+  case "$policy" in
+    false) want_fresh=0 ;;
+    match)
+      if (( have_copy )) && [[ -n "$ver" ]]; then
+        sv="$(deckthemes_version "$id")"
+        if [[ -n "$sv" && "$sv" != "$ver" ]]; then
+          info "  $name: store has $sv, profile recorded $ver -> using the backed-up copy"
+          want_fresh=0
+        fi
+      fi ;;
+  esac
+  if (( want_fresh )) && deckthemes_install "$id" "$name" "$dst"; then
+    json_set_default "$dst/$name/$meta" id "$id" 2>/dev/null || true   # lets CSS Loader offer updates
+    echo fresh; return 0
+  fi
+  if (( have_copy )); then
+    rm -rf "${dst:?}/$name"; cp -a "$ASSETS/$kind/$name" "$dst/$name"
+    echo copied; return 0
+  fi
+  return 1
+}
+
 _decky_themes() {
-  local dst="$HOME/homebrew/themes" name id fresh=0 copied=0 rc=0
+  local dst="$HOME/homebrew/themes" name id ver how fresh=0 copied=0 rc=0
   mkdir -p "$dst"
-  while IFS=$'\t' read -r name id; do
+  while IFS=$'\t' read -r name id ver; do
     [[ -n "$name" ]] || continue
     local cfg="$dst/$name/config_USER.json" keep=""
     [[ -f "$cfg" ]] && keep="$(cat "$cfg")"
-    if pbool decky.fresh_themes true && deckthemes_install "$id" "$name" "$dst"; then
-      json_set_default "$dst/$name/theme.json" id "$id" 2>/dev/null || true   # lets CSS Loader offer updates
-      fresh=$((fresh + 1)); info "  fresh: $name"
-    elif [[ -d "$ASSETS/themes/$name" ]]; then
-      rm -rf "${dst:?}/$name"; cp -a "$ASSETS/themes/$name" "$dst/$name"
-      copied=$((copied + 1)); info "  copied from assets: $name"
+    if how="$(_decky_fetch themes "$id" "$name" "$ver")"; then
+      info "  $how: $name"
+      if [[ "$how" == fresh ]]; then fresh=$((fresh + 1)); else copied=$((copied + 1)); fi
     else
-      err "  could not fetch '$name' ($id) and no copy in assets/themes"; rc=1; continue
+      err "  could not get '$name' ($id): store failed and no copy in assets/themes"; rc=1; continue
     fi
     [[ -n "$keep" ]] && printf '%s' "$keep" > "$cfg"   # re-apply saved state over the fresh folder
-  done < <(pfields decky.themes name,id)
+  done < <(pfields decky.themes name,id,version)
   # local-only themes (no store id) can only come from assets
   local t
   while read -r t; do
@@ -108,20 +141,17 @@ _decky_themes() {
 }
 
 _decky_sounds() {
-  local dst="$HOME/homebrew/sounds" name id fresh=0 copied=0 rc=0
+  local dst="$HOME/homebrew/sounds" name id ver how fresh=0 copied=0 rc=0
   mkdir -p "$dst"
-  while IFS=$'\t' read -r name id; do
+  while IFS=$'\t' read -r name id ver; do
     [[ -n "$name" ]] || continue
-    if pbool decky.fresh_themes true && deckthemes_install "$id" "$name" "$dst"; then
-      json_set_default "$dst/$name/pack.json" id "$id" 2>/dev/null || true
-      fresh=$((fresh + 1)); info "  fresh: $name"
-    elif [[ -d "$ASSETS/sounds/$name" ]]; then
-      rm -rf "${dst:?}/$name"; cp -a "$ASSETS/sounds/$name" "$dst/$name"
-      copied=$((copied + 1)); info "  copied from assets: $name"
+    if how="$(_decky_fetch sounds "$id" "$name" "$ver")"; then
+      info "  $how: $name"
+      if [[ "$how" == fresh ]]; then fresh=$((fresh + 1)); else copied=$((copied + 1)); fi
     else
-      err "  could not fetch pack '$name' ($id)"; rc=1
+      err "  could not get pack '$name' ($id): store failed and no copy in assets/sounds"; rc=1
     fi
-  done < <(pfields decky.sounds.packs name,id)
+  done < <(pfields decky.sounds.packs name,id,version)
   info "sound packs: $fresh fresh from store, $copied copied"
   return $rc
 }

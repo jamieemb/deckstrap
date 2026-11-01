@@ -17,6 +17,7 @@
     push       scp a file into the VM's home               (-File path)
     ssh        open a shell in the VM (port 2222 -> 22)
     status     show what exists
+    screenshot grab the VM screen to ~/VMs/steamos/screen.png (via the QEMU monitor on port 4444)
 
   Typical first run:
     .\vm\steamos-vm.ps1 setup
@@ -32,8 +33,9 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('setup','install','run','snapshot','restore','push','ssh','status')]
+  [ValidateSet('setup','install','run','snapshot','restore','push','ssh','status','screenshot')]
   [string]$Action = 'run',
+  [int]$MonitorPort = 4444,
   [string]$VmDir = "$env:USERPROFILE\VMs\steamos",
   [int]$MemoryMB = 6144,
   [int]$Cpus = 4,
@@ -113,8 +115,32 @@ function Base-Args {
     '-device','qemu-xhci','-device','usb-tablet','-device','usb-kbd',
     '-nic',"user,model=virtio-net-pci,hostfwd=tcp::$SshPort-:22",
     '-rtc','base=localtime',
-    '-boot','menu=on'
+    '-boot','menu=on',
+    '-monitor',"tcp:127.0.0.1:$MonitorPort,server,nowait"
   ) + $gpu + (Accel-Args)
+}
+
+# Talk to the running VM's QEMU monitor (screenshots, keys, power).
+function Monitor-Send([string]$cmd) {
+  $c = New-Object System.Net.Sockets.TcpClient('127.0.0.1', $MonitorPort)
+  $s = $c.GetStream(); $w = New-Object System.IO.StreamWriter($s); $w.AutoFlush = $true
+  Start-Sleep -Milliseconds 300
+  $w.WriteLine($cmd); Start-Sleep -Milliseconds 800
+  $w.WriteLine('quit') | Out-Null 2>$null   # no-op for the VM: closes only this client session
+  $c.Close()
+}
+function Do-Screenshot {
+  $ppm = Join-Path $VmDir 'screen.ppm'; $png = Join-Path $VmDir 'screen.png'
+  if (Test-Path $ppm) { Remove-Item $ppm }
+  $c = New-Object System.Net.Sockets.TcpClient('127.0.0.1', $MonitorPort)
+  $s = $c.GetStream(); $w = New-Object System.IO.StreamWriter($s); $w.AutoFlush = $true
+  Start-Sleep -Milliseconds 300
+  $w.WriteLine("screendump $($ppm -replace '\\','/')")
+  Start-Sleep -Seconds 2
+  $c.Close()
+  if (-not (Test-Path $ppm)) { throw 'screendump failed (is the VM running?)' }
+  & py -3 (Join-Path $PSScriptRoot 'ppm2png.py') $ppm $png
+  Say "screenshot: $png"
 }
 
 function Do-Install {
@@ -158,4 +184,5 @@ switch ($Action) {
   'push'     { Do-Push }
   'ssh'      { Do-Ssh }
   'status'   { Do-Status }
+  'screenshot' { Do-Screenshot }
 }

@@ -20,7 +20,7 @@
   "decky": {
     "enabled": true,
     "branch": "stable",
-    "fresh_themes": true,
+    "fresh_themes": "match",
     "plugins": [
       "CSS Loader",
       "SteamGridDB",
