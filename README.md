@@ -127,9 +127,9 @@ bash tests/run.sh      # syntax, shellcheck, profile tool, backend API, dry-run 
 python3 lib/server.py --profile profile.example.json --insecure-no-sudo   # UI development: open the printed URL with &dry=1
 ```
 
-**Test VM:** `vm/` has scripts that build a real SteamOS virtual machine
-from Valve's recovery image (QEMU; Windows with WHPX or Linux with KVM),
-with snapshots for a repeatable clean install. See [vm/README.md](vm/README.md).
+Testing happens on a real Steam Deck: the SteamOS recovery image does not
+bring up a display under QEMU (its Deck-specific kernel has no driver for the
+emulated GPUs), so there is no VM path.
 
 Releases: push a tag `vX.Y.Z` and the release workflow attaches
 `deckstrap.sh` and its sha256 to the GitHub release. The website in `docs/`
