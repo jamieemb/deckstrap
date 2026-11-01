@@ -38,6 +38,7 @@ _system_ssh() {
     grep -qxF "$key" "$HOME/.ssh/authorized_keys" || echo "$key" >> "$HOME/.ssh/authorized_keys"
     info "authorized_keys updated"
   fi
-  local ip; ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1)"
-  info "SSH: ssh $USER@${ip:-<this Deck's IP>}"
+  local ip
+  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1)"
+  info "SSH: ssh $USER@${ip:-<deck-ip>}"
 }
