@@ -16,21 +16,25 @@ mod_flatpaks_check() {
   (( missing == 0 ))
 }
 
+# System-wide installs go through sudo (cached in a terminal, askpass under the
+# GUI). Running flatpak as the plain user from a GUI process would make KDE
+# raise a polkit password dialog, possibly hidden behind the installer window.
 _flatpaks_install() {
-  flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
-    || sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
+  sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
+    || flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
     || return 1
   local app rc=0
   while read -r app; do
     [[ -n "$app" ]] || continue
     if flatpak_installed "$app"; then info "already installed: $app"; continue; fi
     info "installing $app ..."
-    if ! flatpak install -y --noninteractive flathub "$app"; then
+    if ! sudo flatpak install -y --noninteractive flathub "$app"; then
       warn "system install failed for $app, trying --user"
       flatpak install -y --noninteractive --user flathub "$app" || { err "could not install $app"; rc=1; }
     fi
   done < <(pget flatpaks)
   info "updating all flatpaks..."
-  flatpak update -y --noninteractive || true
+  sudo flatpak update -y --noninteractive || true
+  flatpak update -y --noninteractive --user || true
   return $rc
 }

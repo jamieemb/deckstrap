@@ -54,6 +54,13 @@
     border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); }
   .row { display: flex; gap: 14px; align-items: center; }
   .error { color: var(--bad); min-height: 28px; margin-top: 8px; }
+  /* on-screen keyboard: Steam's own keyboard cannot always appear over this window */
+  .kb { position: fixed; left: 0; right: 0; bottom: 92px; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 10px 10px; z-index: 5; }
+  .kbrow { display: flex; gap: 6px; justify-content: center; margin: 5px 0; }
+  .key { min-width: 82px; height: 50px; font: inherit; font-size: 21px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); cursor: pointer; }
+  .key:active { background: var(--accent); }
+  .key.wide { min-width: 150px; font-size: 17px; } .key.space { min-width: 420px; } .key.on { background: var(--accent); }
+  body.kb-open main { padding-bottom: 320px; }
   .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; }
   .step { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 18px; }
   .dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--line); }
@@ -135,10 +142,12 @@
     <div class="card" style="max-width:640px">
       <div class="field"><label for="pw1" id="pw1Label">Password</label><input type="password" id="pw1" autocomplete="off"></div>
       <div class="field" id="pw2Field" hidden><label for="pw2">Repeat password</label><input type="password" id="pw2" autocomplete="off"></div>
-      <div class="row"><button class="btn" id="showPw" type="button">Show</button><span class="hint">Used only to install software on this Deck. It is never stored or sent anywhere.</span></div>
+      <div class="row"><button class="btn" id="showPw" type="button">Show</button><button class="btn" id="kbBtn" type="button">Keyboard</button><span class="hint">Used only to install software on this Deck. It is never stored or sent anywhere.</span></div>
       <div class="error" id="pwError"></div>
     </div>
   </section>
+
+  <div id="kbWrap" hidden><div id="kb" class="kb"></div></div>
 
   <!-- 3 Install -->
   <section class="screen" id="s3">
@@ -275,7 +284,34 @@
       show(3); renderRun(); poller = setInterval(poll, 700);
     }
   };
-  $("back").onclick = () => show(stage - 1);
+  // ---- on-screen keyboard (touch), bound to whichever text field was focused last
+  let kbTarget = null, kbShift = false;
+  const KB_ROWS = [["1","2","3","4","5","6","7","8","9","0","-","="],["q","w","e","r","t","y","u","i","o","p","[","]"],["a","s","d","f","g","h","j","k","l",";","'","\\"],["z","x","c","v","b","n","m",",",".","/","`"]];
+  const KB_SHIFT = {"1":"!","2":"@","3":"#","4":"$","5":"%","6":"^","7":"&","8":"*","9":"(","0":")","-":"_","=":"+","[":"{","]":"}",";":":","'":"\"","\\":"|",",":"<",".":">","/":"?","`":"~"};
+  function kbKey(label, fn, cls) { const b = document.createElement("button"); b.type = "button"; b.className = "key" + (cls ? " " + cls : ""); b.textContent = label; b.onmousedown = (e) => { e.preventDefault(); fn(); }; return b; }
+  function kbRender() {
+    const k = $("kb"); k.innerHTML = "";
+    for (const row of KB_ROWS) {
+      const r = document.createElement("div"); r.className = "kbrow";
+      for (const c of row) { const ch = kbShift ? (KB_SHIFT[c] || c.toUpperCase()) : c; r.appendChild(kbKey(ch, () => { kbType(ch); if (kbShift) { kbShift = false; kbRender(); } })); }
+      k.appendChild(r);
+    }
+    const r = document.createElement("div"); r.className = "kbrow";
+    r.appendChild(kbKey("Shift", () => { kbShift = !kbShift; kbRender(); }, "wide" + (kbShift ? " on" : "")));
+    r.appendChild(kbKey("Space", () => kbType(" "), "space"));
+    r.appendChild(kbKey("Backspace", kbBack, "wide"));
+    r.appendChild(kbKey("Enter", () => { if (kbTarget && kbTarget.id === "profUrl") $("profLoad").click(); else $("next").click(); }, "wide"));
+    r.appendChild(kbKey("Hide", kbHide, "wide"));
+    k.appendChild(r);
+  }
+  function kbType(ch) { if (!kbTarget) return; const v = kbTarget.value, s = kbTarget.selectionStart ?? v.length, e = kbTarget.selectionEnd ?? s; kbTarget.value = v.slice(0, s) + ch + v.slice(e); kbTarget.setSelectionRange(s + 1, s + 1); }
+  function kbBack() { if (!kbTarget) return; const v = kbTarget.value, s = kbTarget.selectionStart ?? v.length, e = kbTarget.selectionEnd ?? s; if (s === e && s === 0) return; const a = s === e ? s - 1 : s; kbTarget.value = v.slice(0, a) + v.slice(e); kbTarget.setSelectionRange(a, a); }
+  function kbShow(t) { kbTarget = t; $("kbWrap").hidden = false; document.body.classList.add("kb-open"); kbRender(); setTimeout(() => t.scrollIntoView({ block: "center" }), 50); }
+  function kbHide() { $("kbWrap").hidden = true; document.body.classList.remove("kb-open"); }
+  for (const id of ["pw1", "pw2", "profUrl"]) $(id).addEventListener("focus", () => kbShow($(id)));
+  $("kbBtn").onclick = () => { if ($("kbWrap").hidden) { $("pw1").focus(); kbShow($("pw1")); } else kbHide(); };
+
+  $("back").onclick = () => { kbHide(); show(stage - 1); };
   $("showPw").onclick = () => { const t = $("pw1").type === "password" ? "text" : "password"; $("pw1").type = t; $("pw2").type = t; $("showPw").textContent = t === "text" ? "Hide" : "Show"; };
   $("pw2").onkeydown = $("pw1").onkeydown = (e) => { if (e.key === "Enter") $("next").click(); };
   $("toggleLog").onclick = () => { const w = $("logWrap"); w.classList.toggle("collapsed"); $("toggleLog").textContent = w.classList.contains("collapsed") ? "Show log" : "Hide log"; };

@@ -215,11 +215,12 @@ gui_ensure_firefox() {
   flatpak_installed org.mozilla.firefox && return 0
   info "Firefox is needed to show the installer; installing it from Flathub..."
   local log; log="$(mktemp)"
+  # No sudo password is known yet, so install per-user: a system install from a
+  # GUI process makes KDE pop a polkit "Authentication required" dialog, which
+  # the installer window then hides.
   (
-    flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
-      || flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-    flatpak install -y --noninteractive flathub org.mozilla.firefox \
-      || flatpak install -y --noninteractive --user flathub org.mozilla.firefox
+    flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    flatpak install -y --noninteractive --user flathub org.mozilla.firefox
   ) > "$log" 2>&1 &
   local pid=$!
   if command -v zenity >/dev/null; then
@@ -233,9 +234,13 @@ gui_ensure_firefox() {
   flatpak_installed org.mozilla.firefox
 }
 
-gui_open_firefox() {   # gui_open_firefox <url>: kiosk window with a private, pre-configured profile
+# gui_open_firefox <url>: a normal (not fullscreen) window the size of the Deck
+# screen, with the browser toolbars hidden by userChrome.css in a private
+# profile. A fullscreen/kiosk window would sit above Steam's on-screen
+# keyboard and above any dialog another program opens, so it must not be used.
+gui_open_firefox() {
   local prof="$HOME/.var/app/org.mozilla.firefox/deckstrap-ui"
-  mkdir -p "$prof"
+  mkdir -p "$prof/chrome"
   cat > "$prof/user.js" <<'PREFS'
 user_pref("browser.aboutwelcome.enabled", false);
 user_pref("browser.startup.homepage_override.mstone", "ignore");
@@ -245,8 +250,14 @@ user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.sessionstore.resume_from_crash", false);
 user_pref("browser.tabs.warnOnClose", false);
 user_pref("app.update.enabled", false);
+user_pref("toolbox.legacyUserProfileCustomizations.stylesheets", true);
+user_pref("browser.tabs.inTitlebar", 0);
 PREFS
-  flatpak run org.mozilla.firefox --kiosk --new-instance --no-remote --profile "$prof" "$1" >/dev/null 2>&1
+  cat > "$prof/chrome/userChrome.css" <<'CSS'
+#TabsToolbar, #nav-bar, #PersonalToolbar { visibility: collapse !important; }
+CSS
+  flatpak run org.mozilla.firefox --new-instance --no-remote --profile "$prof" \
+    --width 1280 --height 800 "$1" >/dev/null 2>&1
 }
 
 # ----------------------------------------------------------------------------
