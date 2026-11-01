@@ -5,8 +5,14 @@ MOD_DESC="Latest GE-Proton into Steam's compatibilitytools.d (profile: ge_proton
 mod_ge_proton_wanted() { pbool ge_proton true; }
 mod_ge_proton_apply()  { run_step "GE-Proton" _ge_proton_install; }
 mod_ge_proton_check()  {
-  local d="$HOME/.steam/root/compatibilitytools.d"
-  ls -d "$d"/GE-Proton* >/dev/null 2>&1 && echo "$(ls -d "$d"/GE-Proton* | xargs -n1 basename | sort -V | tail -1)" || { echo "none"; return 1; }
+  local d="$HOME/.steam/root/compatibilitytools.d" p best=""
+  shopt -s nullglob
+  for p in "$d"/GE-Proton*/; do
+    p="${p%/}"; p="${p##*/}"
+    best="$(printf '%s\n' "$best" "$p" | sort -V | tail -n1)"
+  done
+  shopt -u nullglob
+  [[ -n "$best" ]] && echo "$best" || { echo "none"; return 1; }
 }
 mod_ge_proton_notes()  { echo "Steam > Settings > Compatibility: pick GE-Proton for games that need it."; }
 

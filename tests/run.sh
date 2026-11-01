@@ -3,7 +3,7 @@
 # Runs on Linux CI or Git Bash (needs python3 on PATH; set PYTHON to override).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 fail=0
 pass() { echo "  ok   $*"; }
 bad()  { echo "  FAIL $*"; fail=1; }
@@ -16,7 +16,8 @@ done
 
 echo "== shellcheck"
 if command -v shellcheck >/dev/null; then
-  shellcheck -x -s bash deckstrap build.sh install.sh tests/run.sh lib/*.sh modules/*.sh && pass "clean" || bad "shellcheck"
+  # warnings and errors fail the build; info/style (e.g. SC2015 for "a && ok || fail" reporting) do not
+  shellcheck -x -s bash -S warning deckstrap build.sh install.sh tests/run.sh lib/*.sh modules/*.sh && pass "clean" || bad "shellcheck"
 else
   echo "  skip (shellcheck not installed)"
 fi
@@ -70,7 +71,8 @@ bash ./build.sh --profile "$T/profile.json" --assets "$T/assets" --out "$T/bundl
 grep -q '^deckstrap ' <<<"$(bash "$T/bundle.sh" version 2>/dev/null)" && pass "bundle runs tool" || bad "bundle version"
 grep -q '^MODULE' <<<"$(bash "$T/bundle.sh" status 2>/dev/null)" && pass "bundle status" || bad "bundle status"
 HOME="$T/home2" bash "$T/bundle.sh" --dry-run > "$T/bundle.out" 2>&1 && grep -q 'Emulator BIOS' "$T/bundle.out" && pass "bundle dry-run sees assets" || bad "bundle dry-run: $(tail -5 "$T/bundle.out")"
-ls -d /tmp/deckstrap.* "${TMPDIR:-/tmp}"/deckstrap.* 2>/dev/null | grep -q . && bad "bundle left temp dirs" || pass "bundle cleans up"
+shopt -s nullglob; leftovers=(/tmp/deckstrap.* "${TMPDIR:-/tmp}"/deckstrap.*); shopt -u nullglob
+(( ${#leftovers[@]} )) && bad "bundle left temp dirs: ${leftovers[*]}" || pass "bundle cleans up"
 
 rm -rf "$T"
 echo

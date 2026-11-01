@@ -2,6 +2,7 @@
 # deckstrap core library: logging, step runner, profile access, store helpers.
 # Sourced by the deckstrap entrypoint; DECKSTRAP_DIR is set by it.
 
+# shellcheck disable=SC2034  # used by the entrypoint and build.sh
 DECKSTRAP_VERSION="0.1.0"
 PROFILE_PY="$DECKSTRAP_DIR/lib/profile.py"
 USER="${USER:-$(id -un)}"
@@ -59,7 +60,9 @@ load_modules() {
     # shellcheck source=/dev/null
     source "$f"
     [[ -n "$MOD_NAME" ]] || { warn "module $f sets no MOD_NAME; ignored"; continue; }
-    MODULES+=("$MOD_NAME"); MOD_DESCS["$MOD_NAME"]="$MOD_DESC"
+    MODULES+=("$MOD_NAME")
+    # shellcheck disable=SC2034  # read by the entrypoint's usage/wizard
+    MOD_DESCS["$MOD_NAME"]="$MOD_DESC"
   done
 }
 
