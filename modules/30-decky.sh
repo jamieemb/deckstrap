@@ -87,7 +87,8 @@ _decky_settings() {
 #   false             always use the backed-up copy (store only if none exists)
 # Prints "fresh" or "copied"; returns 1 when neither source worked.
 _decky_fetch() {   # _decky_fetch <themes|sounds> <id> <name> <recorded-version>
-  local kind="$1" id="$2" name="$3" ver="$4" dst="$HOME/homebrew/$kind"
+  local kind="$1" id="$2" name="$3" ver="$4"
+  local dst="$HOME/homebrew/$kind"
   local policy have_copy=0 want_fresh=1 sv meta="theme.json"
   [[ "$kind" == sounds ]] && meta="pack.json"
   policy="$(pget decky.fresh_themes match)"
